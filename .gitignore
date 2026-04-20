@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Vercel
+.vercel/
+
+# Testing
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Drizzle migrations (commit generated, not hand-written)
+infrastructure/migrations/meta/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# SBOM (generated in CI — do not commit)
+sbom.json
