@@ -59,7 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* WCAG: preconnect for performance — reduces layout shift */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
       </head>
-      <body className="bg-white text-slate-900 antialiased">
+      <body className="bg-white text-slate-900 antialiased" suppressHydrationWarning>
         {/* WCAG 2.4.1: Skip to main content link */}
         <a
           href="#main-content"

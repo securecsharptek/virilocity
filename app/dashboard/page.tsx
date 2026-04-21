@@ -152,8 +152,8 @@ export default function DashboardPage() {
             </p>
             <ul className="space-y-3" aria-label="Threads awaiting approval">
               {[
-                { id:'t_abc123', sub:'r/marketing',  title:'Best AI tools for content marketing in 2026?', draft:'Virilocity's GEO engine tracks AI search citations across 7 engines…' },
-                { id:'t_def456', sub:'r/SaaS',       title:'How do you track brand mentions across AI chatbots?', draft:'Great question — our AI Visibility Tracker scans ChatGPT, Claude, Gemini…' },
+                { id:'t_abc123', sub:'r/marketing',  title:'Best AI tools for content marketing in 2026?', draft:'Virilocity GEO engine tracks AI search citations across 7 engines…' },
+                { id:'t_def456', sub:'r/SaaS',       title:'How do you track brand mentions across AI chatbots?', draft:'Great question - our AI Visibility Tracker scans ChatGPT, Claude, Gemini…' },
               ].map(thread => (
                 <li key={thread.id} className="border border-mgray rounded-lg p-4">
                   <p className="text-xs text-teal font-semibold mb-0.5">{thread.sub}</p>

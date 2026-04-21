@@ -3,10 +3,11 @@
 // Virilocity V16.4 — Dashboard Layout
 // Sidebar nav · B2B/B2C aware · WCAG 2.2 navigation landmark
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState }  from 'react';
-import NavBar        from '../../components/layout/NavBar';
-import Badge         from '../../components/ui/Badge';
-import { VERSION }   from '../../lib/types/index';
+import { useState }     from 'react';
+import { usePathname }  from 'next/navigation';
+import NavBar           from '../../components/layout/NavBar';
+import Badge            from '../../components/ui/Badge';
+import { VERSION }      from '../../lib/types/index';
 
 const NAV_ITEMS = [
   { href: '/dashboard',          icon: '▦',  label: 'Overview'       },
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
   const tier  = 'pro';   // Production: from auth() session
   const model = 'b2b';  // Production: from auth() session
 
@@ -56,10 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <a
                   href={item.href}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
-                  aria-current={
-                    typeof window !== 'undefined' && window.location.pathname === item.href
-                      ? 'page' : undefined
-                  }
+                  aria-current={pathname === item.href ? 'page' : undefined}
                 >
                   <span aria-hidden="true" className="w-4 flex-shrink-0">{item.icon}</span>
                   {item.label}
