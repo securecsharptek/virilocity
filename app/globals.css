@@ -2,13 +2,29 @@
    Virilocity V16.4 — Global CSS
    TEVV F-04 Fix: WCAG 2.2 compliant focus indicators, color contrast, reflow
    ───────────────────────────────────────────────────────────────────────────── */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=Rajdhani:wght@300;400;500;600;700&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap');
+
 @import "tailwindcss";
 
 @theme {
-  /* CloudOneSoftware color palette */
+  /* V16.4 Glassmorphic color palette */
+  --color-bg: #030912;
+  --color-surface: rgba(6, 13, 26, 0.95);
   --color-navy: #0D1B3E;
   --color-teal: #0E7C7B;
+  --color-teal-hi: rgba(14, 200, 198, 1);
+  --color-teal-glow: rgba(14, 124, 123, 0.55);
   --color-gold: #C9A84C;
+  --color-gold-hi: rgba(255, 210, 100, 1);
+  --color-gold-glow: rgba(201, 168, 76, 0.5);
+  --color-red: rgba(220, 75, 55, 0.85);
+  --color-red-glow: rgba(220, 75, 55, 0.45);
+  --color-green: #1EA550;
+  --color-green-glow: rgba(30, 165, 80, 0.5);
+  --color-purple: rgba(100, 50, 180, 0.7);
+  
   --color-lgray: #F2F4F8;
   --color-mgray: #D0D5DD;
   --color-success: #1A7A4A;
@@ -16,7 +32,15 @@
   --color-warning: #E67E22;
   
   /* Typography */
-  --font-sans: Inter, system-ui, sans-serif;
+  --font-sans: Rajdhani, Inter, system-ui, sans-serif;
+  --font-display: Syncopate, sans-serif;
+  --font-mono: 'DM Mono', 'Courier New', monospace;
+  
+  /* Glass effects */
+  --glass: linear-gradient(145deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 50%, rgba(0,5,20,0.4) 100%);
+  --glass-border: rgba(255, 255, 255, 0.11);
+  --glass-hi: rgba(255, 255, 255, 0.35);
+  --shadow: 0 20px 60px rgba(0,0,0,0.72), 0 4px 16px rgba(0,0,0,0.5);
 }
 
 /* ── Design tokens (for custom CSS) ─────────────────────────────────────── */
@@ -185,4 +209,174 @@ html {
 @media (forced-colors: active) {
   .btn { border: 2px solid ButtonText; }
   .input { border: 2px solid FieldText; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V16.4 GLASSMORPHIC ATMOSPHERE & EFFECTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Dark Background with Atmospheric Gradients ─────────────────────────── */
+body {
+  background: var(--color-bg);
+  color: #ffffff;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Atmospheric gradient layers */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 15% 10%, rgba(14, 124, 123, 0.14) 0%, transparent 65%),
+    radial-gradient(ellipse 55% 55% at 85% 85%, rgba(100, 50, 180, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 45% 40% at 50% 50%, rgba(201, 168, 76, 0.05) 0%, transparent 70%);
+}
+
+/* Grain texture */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='500' height='500' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.028'/%3E%3C/svg%3E");
+  opacity: 0.6;
+}
+
+/* ── Glassmorphism Utilities ────────────────────────────────────────────── */
+.glass-shell {
+  background: var(--glass);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  box-shadow: 
+    var(--shadow),
+    inset 0 1.5px 0 var(--glass-hi),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 0 80px rgba(14, 124, 123, 0.07);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-shell::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: linear-gradient(
+    90deg,
+    transparent 2%,
+    rgba(255, 255, 255, 0.5) 30%,
+    rgba(255, 255, 255, 0.75) 50%,
+    rgba(255, 255, 255, 0.5) 70%,
+    transparent 98%
+  );
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Glass card variations */
+.card-glass {
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-glass::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 5%,
+    rgba(255, 255, 255, 0.38) 40%,
+    rgba(255, 255, 255, 0.5) 60%,
+    rgba(255, 255, 255, 0.38) 80%,
+    transparent 95%
+  );
+  pointer-events: none;
+}
+
+.card-glass:hover {
+  border-color: rgba(14, 124, 123, 0.5);
+  transform: translateY(-2px);
+  transition: all 0.18s ease;
+  box-shadow: 
+    0 12px 36px rgba(0, 0, 0, 0.5),
+    0 0 40px rgba(14, 124, 123, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* ── Animation keyframes ────────────────────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes glowpulse {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(14, 200, 198, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(14, 200, 198, 0.7);
+  }
+}
+
+@keyframes goldpulse {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(201, 168, 76, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(201, 168, 76, 0.7);
+  }
+}
+
+/* ── Utility classes ────────────────────────────────────────────────────── */
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-green);
+  box-shadow: 0 0 8px var(--color-green-glow);
+  animation: pulse 2s infinite;
+  display: inline-block;
+}
+
+.pulse-dot.amber {
+  background: var(--color-gold);
+  box-shadow: 0 0 8px var(--color-gold-glow);
+}
+
+.pulse-dot.teal {
+  background: var(--color-teal-hi);
+  box-shadow: 0 0 8px var(--color-teal-glow);
+}
+
+/* Ensure content is above atmospheric layers */
+.wrap,
+main,
+header,
+nav {
+  position: relative;
+  z-index: 1;
 }
