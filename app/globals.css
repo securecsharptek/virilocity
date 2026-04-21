@@ -2,7 +2,8 @@
    Virilocity V16.4 — Global CSS
    TEVV F-04 Fix: WCAG 2.2 compliant focus indicators, color contrast, reflow
    ───────────────────────────────────────────────────────────────────────────── */
-@import "tailwindcss";
+
+/* @import "tailwindcss";
 
 @theme {
   /* CloudOneSoftware color palette */
@@ -185,4 +186,3 @@ html {
 @media (forced-colors: active) {
   .btn { border: 2px solid ButtonText; }
   .input { border: 2px solid FieldText; }
-}
