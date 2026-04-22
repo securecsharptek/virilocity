@@ -3,6 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 'use client';
 
+import { signOut } from 'next-auth/react';
+
 interface DashboardHeaderProps {
   user?: {
     name: string;
@@ -55,6 +57,15 @@ export default function DashboardHeader({
           <span className="w-1.5 h-1.5 rounded-full bg-[#1EA550] shadow-[0_0_8px_rgba(30,165,80,0.5)] animate-pulse" />
           {status.text} · {status.count}
         </div>
+
+        {/* Sign Out Button */}
+        <button
+          onClick={() => signOut({ callbackUrl: '/auth/login' })}
+          className="px-3 py-1.5 rounded-lg font-mono text-[9px] tracking-[1.5px] text-[rgba(255,255,255,0.7)] bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] transition-all cursor-pointer"
+          title="Sign out"
+        >
+          SIGN OUT
+        </button>
 
         {/* Avatar */}
         <div

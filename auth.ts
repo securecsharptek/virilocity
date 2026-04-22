@@ -1,12 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Virilocity V16.4 — NextAuth v5 Root Config
 // Required for Next.js App Router auth() server-side calls
-// Providers: Google · Microsoft Entra ID · Resend Magic Link
+// Providers: Google · Microsoft Entra ID
 // ─────────────────────────────────────────────────────────────────────────────
 import NextAuth                 from 'next-auth';
 import Google                   from 'next-auth/providers/google';
 import MicrosoftEntraID         from 'next-auth/providers/microsoft-entra-id';
-import Resend                   from 'next-auth/providers/resend';
 import type { Session }         from 'next-auth';
 
 interface ExtendedSession extends Session {
@@ -18,6 +17,7 @@ interface ExtendedSession extends Session {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env['AUTH_SECRET'],
+  trustHost: true,
 
   providers: [
     Google({
@@ -31,12 +31,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     MicrosoftEntraID({
       clientId:     process.env['ENTRA_CLIENT_ID']     ?? '',
       clientSecret: process.env['ENTRA_CLIENT_SECRET'] ?? '',
-      tenantId:     process.env['ENTRA_TENANT_ID']     ?? 'common',
-    }),
-
-    Resend({
-      apiKey: process.env['RESEND_API_KEY'] ?? '',
-      from:   'Virilocity <noreply@virilocity.io>',
+      issuer:       `https://login.microsoftonline.com/${process.env['ENTRA_TENANT_ID'] ?? 'common'}/v2.0`,
+      authorization: {
+        params: { 
+          scope: 'openid profile email User.Read',
+          prompt: 'login', // Force credential entry every time
+        },
+      },
     }),
   ],
 

@@ -2,17 +2,19 @@
 // Virilocity V16.4 — Login Page  ·  WCAG 2.2 compliant
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Metadata } from 'next';
+import { signIn } from '@/auth';
 
 export const metadata: Metadata = {
   title: 'Sign In',
   description: 'Sign in to your Virilocity account.',
 };
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { tier?: string; error?: string };
+  searchParams: Promise<{ tier?: string; error?: string }>;
 }) {
+  const params = await searchParams;
   return (
     <main id="main-content" className="min-h-screen bg-lgray flex items-center justify-center px-4">
       <div className="w-full max-w-md">
@@ -28,9 +30,9 @@ export default function LoginPage({
         </div>
 
         {/* Error alert — WCAG 3.3.1 */}
-        {searchParams.error && (
+        {params.error && (
           <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mb-4 text-sm">
-            {searchParams.error === 'OAuthSignin' ? 'Authentication failed. Please try again.' : searchParams.error}
+            {params.error === 'OAuthSignin' ? 'Authentication failed. Please try again.' : params.error}
           </div>
         )}
 
@@ -38,20 +40,34 @@ export default function LoginPage({
 
           {/* Social SSO */}
           <div className="space-y-3">
-            <a
-              href="/api/auth/signin/google"
-              className="btn btn-primary w-full justify-center gap-3"
-              aria-label="Sign in with Google"
+            <form
+              action={async () => {
+                'use server';
+                await signIn('google', { redirectTo: '/dashboard' });
+              }}
             >
-              <span aria-hidden="true">G</span> Continue with Google
-            </a>
-            <a
-              href="/api/auth/signin/azure-ad"
-              className="btn border border-mgray text-navy w-full justify-center gap-3 hover:bg-lgray"
-              aria-label="Sign in with Microsoft Entra ID"
+              <button
+                type="submit"
+                className="btn btn-primary w-full justify-center gap-3"
+                aria-label="Sign in with Google"
+              >
+                <span aria-hidden="true">G</span> Continue with Google
+              </button>
+            </form>
+            <form
+              action={async () => {
+                'use server';
+                await signIn('microsoft-entra-id', { redirectTo: '/dashboard' });
+              }}
             >
-              <span aria-hidden="true">M</span> Continue with Microsoft
-            </a>
+              <button
+                type="submit"
+                className="btn border border-mgray text-navy w-full justify-center gap-3 hover:bg-lgray"
+                aria-label="Sign in with Microsoft Entra ID"
+              >
+                <span aria-hidden="true">M</span> Continue with Microsoft
+              </button>
+            </form>
           </div>
 
           {/* Divider */}

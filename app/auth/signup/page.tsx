@@ -2,6 +2,7 @@
 // Virilocity V16.4 — Signup Page  ·  B2B/B2C  ·  WCAG 2.2
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Metadata } from 'next';
+import { signIn } from '@/auth';
 import { PRICES, TIER_LIMITS } from '../../../lib/types/index';
 
 export const metadata: Metadata = {
@@ -13,13 +14,14 @@ const TIER_LABELS: Record<string, string> = {
   free:'Free', starter:'Starter', pro:'Pro', growth:'Growth', scale:'Scale', enterprise:'Enterprise',
 };
 
-export default function SignupPage({
+export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: { tier?: string; model?: string };
+  searchParams: Promise<{ tier?: string; model?: string }>;
 }) {
-  const tier  = searchParams.tier  ?? 'free';
-  const model = searchParams.model ?? 'b2c';
+  const params = await searchParams;
+  const tier  = params.tier  ?? 'free';
+  const model = params.model ?? 'b2c';
   const price = PRICES[tier as keyof typeof PRICES];
   const isB2B = model === 'b2b';
 
@@ -48,17 +50,35 @@ export default function SignupPage({
         <div className="bg-white rounded-2xl shadow-sm border border-mgray p-8">
           {/* SSO first */}
           <div className="space-y-3 mb-6">
-            <a href={`/api/auth/signin/google?callbackUrl=/dashboard&tier=${tier}&model=${model}`}
-              className="btn btn-primary w-full justify-center"
-              aria-label="Sign up with Google">
-              <span aria-hidden="true">G</span> Continue with Google
-            </a>
-            <a href={`/api/auth/signin/azure-ad?callbackUrl=/dashboard&tier=${tier}&model=${model}`}
-              className="btn border border-mgray text-navy w-full justify-center hover:bg-lgray"
-              aria-label="Sign up with Microsoft — recommended for B2B">
-              <span aria-hidden="true">M</span> Continue with Microsoft
-              {isB2B && <span className="ml-2 text-xs bg-teal text-white px-2 py-0.5 rounded-full">Recommended for teams</span>}
-            </a>
+            <form
+              action={async () => {
+                'use server';
+                await signIn('google', { redirectTo: '/dashboard' });
+              }}
+            >
+              <button
+                type="submit"
+                className="btn btn-primary w-full justify-center"
+                aria-label="Sign up with Google"
+              >
+                <span aria-hidden="true">G</span> Continue with Google
+              </button>
+            </form>
+            <form
+              action={async () => {
+                'use server';
+                await signIn('microsoft-entra-id', { redirectTo: '/dashboard' });
+              }}
+            >
+              <button
+                type="submit"
+                className="btn border border-mgray text-navy w-full justify-center hover:bg-lgray"
+                aria-label="Sign up with Microsoft — recommended for B2B"
+              >
+                <span aria-hidden="true">M</span> Continue with Microsoft
+                {isB2B && <span className="ml-2 text-xs bg-teal text-white px-2 py-0.5 rounded-full">Recommended for teams</span>}
+              </button>
+            </form>
           </div>
 
           <div className="flex items-center gap-3 mb-6" role="separator" aria-label="or email signup">

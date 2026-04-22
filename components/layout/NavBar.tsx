@@ -62,12 +62,12 @@ export default function NavBar() {
 
         {/* CTA + Mobile toggle */}
         <div className="flex items-center gap-3">
-          <a
+          {/* <a
             href="/auth/login"
             className="hidden md:inline-flex text-slate-300 hover:text-white text-sm font-medium"
           >
             Sign In
-          </a>
+          </a> */}
           <a
             href="/auth/signup"
             className="btn btn-secondary text-sm px-4 py-2"
