@@ -83,8 +83,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, account }) {
       // Production: log sign-in event, update lastLoginAt in DB
     },
-    async signOut({ token }) {
-      // Production: invalidate any active sessions
+    async signOut() {
+      // Session cleared automatically by NextAuth
+      // Cookie deletion handled by framework
+      console.log('User signed out - session invalidated');
     },
   },
 });

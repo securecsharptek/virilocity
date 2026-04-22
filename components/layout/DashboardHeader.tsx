@@ -60,7 +60,11 @@ export default function DashboardHeader({
 
         {/* Sign Out Button */}
         <button
-          onClick={() => signOut({ callbackUrl: '/auth/login' })}
+          onClick={() => {
+            localStorage.clear();
+            sessionStorage.clear();
+            signOut({ callbackUrl: '/auth/login', redirect: true });
+          }}
           className="px-3 py-1.5 rounded-lg font-mono text-[9px] tracking-[1.5px] text-[rgba(255,255,255,0.7)] bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)] transition-all cursor-pointer"
           title="Sign out"
         >
