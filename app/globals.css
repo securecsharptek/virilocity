@@ -321,6 +321,120 @@ body::after {
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
+/* ── Dashboard Light Theme ──────────────────────────────────────────────── */
+.dashboard-theme {
+  transition: background-color 220ms ease, color 220ms ease;
+}
+
+.dashboard-theme--light {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(255, 203, 222, 0.38), transparent 44%),
+    radial-gradient(circle at 84% 86%, rgba(243, 214, 255, 0.34), transparent 46%),
+    linear-gradient(180deg, #fdf4f8 0%, #f8eef7 45%, #f6ecf5 100%);
+}
+
+.dashboard-theme--light .glass-shell {
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 247, 252, 0.82) 50%, rgba(243, 230, 244, 0.92) 100%);
+  border: 1px solid rgba(123, 86, 128, 0.2);
+  box-shadow:
+    0 22px 48px rgba(155, 118, 157, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -1px 0 rgba(188, 157, 190, 0.24),
+    0 0 0 1px rgba(255, 255, 255, 0.58);
+}
+
+.dashboard-theme--light .glass-shell::before {
+  background: linear-gradient(
+    90deg,
+    transparent 2%,
+    rgba(255, 255, 255, 0.92) 30%,
+    rgba(255, 230, 243, 0.98) 50%,
+    rgba(255, 255, 255, 0.92) 70%,
+    transparent 98%
+  );
+}
+
+.dashboard-theme--light .card-glass {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.8) 0%, rgba(253, 244, 250, 0.78) 45%, rgba(241, 227, 242, 0.9) 100%);
+  border-color: rgba(132, 98, 136, 0.2);
+  box-shadow: 0 10px 24px rgba(142, 105, 146, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.dashboard-theme--light .card-glass:hover {
+  border-color: rgba(168, 95, 148, 0.34);
+  box-shadow:
+    0 12px 28px rgba(149, 107, 151, 0.24),
+    0 0 24px rgba(191, 126, 169, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.dashboard-theme--light .glass-shell > div:first-child {
+  background: linear-gradient(180deg, rgba(255, 247, 252, 0.78) 0%, rgba(245, 233, 244, 0.74) 100%) !important;
+  border-bottom-color: rgba(145, 104, 146, 0.18) !important;
+}
+
+.dashboard-theme--light .glass-shell > div:first-child button {
+  color: rgba(81, 57, 90, 0.74) !important;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94) 0%, rgba(245, 232, 244, 0.88) 100%) !important;
+  box-shadow:
+    0 6px 16px rgba(138, 105, 142, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -1px 0 rgba(176, 138, 178, 0.2) !important;
+}
+
+.dashboard-theme--light .glass-shell > div:first-child button[aria-pressed='true'] {
+  color: rgba(141, 51, 122, 0.98) !important;
+  background: linear-gradient(135deg, rgba(255, 214, 235, 0.95) 0%, rgba(255, 188, 221, 0.88) 100%) !important;
+  box-shadow:
+    0 0 0 1px rgba(193, 92, 152, 0.34),
+    0 8px 18px rgba(186, 100, 155, 0.25),
+    inset 0 1px 0 rgba(255, 243, 250, 0.95) !important;
+}
+
+.dashboard-theme--light .glass-shell > div:first-child button:hover {
+  color: rgba(119, 50, 110, 0.92) !important;
+}
+
+.dashboard-theme--light .glass-shell > div:nth-child(2) {
+  background: linear-gradient(180deg, rgba(252, 241, 248, 0.72) 0%, rgba(245, 230, 243, 0.7) 100%) !important;
+  border-bottom-color: rgba(152, 112, 151, 0.18) !important;
+}
+
+.dashboard-theme--light .glass-shell > div:nth-child(3) {
+  background: linear-gradient(180deg, rgba(255, 249, 253, 0.78) 0%, rgba(245, 234, 244, 0.76) 100%) !important;
+}
+
+.dashboard-theme--light .glass-shell [class*='font-mono text-[7.5px]'],
+.dashboard-theme--light .glass-shell [class*='font-mono text-[7px]'] {
+  color: rgba(126, 88, 126, 0.74) !important;
+}
+
+.dashboard-theme--light .glass-shell [class*='text-[rgba(255,255,255'],
+.dashboard-theme--light .glass-shell [class*='text-white'] {
+  color: rgba(76, 47, 79, 0.86) !important;
+  text-shadow: none !important;
+}
+
+.dashboard-theme--light .glass-shell [class*='text-[rgba(14,200,198'],
+.dashboard-theme--light .glass-shell [class*='text-[rgba(30,165,80'],
+.dashboard-theme--light .glass-shell [class*='text-[rgba(201,168,76'] {
+  color: rgba(164, 66, 133, 0.94) !important;
+}
+
+.dashboard-theme--light .glass-shell [class*='border-[rgba(255,255,255'] {
+  border-color: rgba(150, 113, 152, 0.2) !important;
+}
+
+.dashboard-theme--light .glass-shell [class*='bg-[rgba(0,0,0'] {
+  background-color: rgba(237, 217, 234, 0.56) !important;
+}
+
+.dashboard-theme--light .glass-shell [class*='shadow-[0_0_'],
+.dashboard-theme--light .glass-shell [class*='shadow-[0_8px_'],
+.dashboard-theme--light .glass-shell [class*='shadow-[0_12px_'] {
+  box-shadow: 0 8px 20px rgba(140, 102, 142, 0.18) !important;
+}
+
 /* ── Animation keyframes ────────────────────────────────────────────────── */
 @keyframes pulse {
   0%, 100% {

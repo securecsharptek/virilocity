@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import DashboardHeader from '../../components/layout/DashboardHeader';
 import TabButton from '../../components/ui/TabButton';
 import Lever from '../../components/ui/Lever';
@@ -177,6 +177,7 @@ const SCHEDULED_AGENTS: ScheduledAgent[] = [
 ];
 
 export default function DashboardClient() {
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [activeTab, setActiveTab] = useState('dash');
   const [activeDashLever, setActiveDashLever] = useState('overview');
   const [activeAgentsLever, setActiveAgentsLever] = useState('all');
@@ -185,8 +186,24 @@ export default function DashboardClient() {
   const [activeContactsLever, setActiveContactsLever] = useState('all');
   const [activeSettingsLever, setActiveSettingsLever] = useState('billing');
 
+  useEffect(() => {
+    const stored = localStorage.getItem('virilocity-dashboard-theme');
+    if (stored === 'light' || stored === 'dark') {
+      setTheme(stored);
+      return;
+    }
+
+    if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+      setTheme('light');
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('virilocity-dashboard-theme', theme);
+  }, [theme]);
+
   return (
-    <div className="min-h-screen">
+    <div className={`min-h-screen dashboard-theme dashboard-theme--${theme}`}>
       {/* Container with max-width */}
       <div className="relative z-10 max-w-[1100px] mx-auto px-4 pb-10">
         {/* Header */}
@@ -194,6 +211,8 @@ export default function DashboardClient() {
           user={{ name: 'Keshav Choudhary', initials: 'KM' }}
           tenant="CloudOneSoftware LLC · Enterprise"
           status={{ text: 'LIVE', count: '503/503 PASS' }}
+          theme={theme}
+          onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
         />
 
         {/* Main Glass Shell */}
