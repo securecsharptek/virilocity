@@ -11,6 +11,7 @@ import KPICard from '../../components/ui/KPICard';
 import GlassCard from '../../components/ui/GlassCard';
 import SectionHeader from '../../components/ui/SectionHeader';
 import ActivityFeed, { type FeedItem } from '../../components/ui/ActivityFeed';
+import ToastContainer, { useToast } from '../../components/ui/Toast';
 
 const FEED_ITEMS: FeedItem[] = [
   {
@@ -88,6 +89,7 @@ type HITLQueueItem = {
   agent: string;
   platform: string;
   content: string;
+  queuedAgo?: string;
 };
 
 const HITL_QUEUE_ITEMS: HITLQueueItem[] = [
@@ -166,6 +168,42 @@ type ScheduledAgent = {
   status: 'scheduled' | 'hitl';
 };
 
+interface DashboardApiResponse {
+  testsPassedLabel: string;
+  tevvScore: number;
+  kpis: {
+    activeAgents: number;
+    postsGenerated: number;
+    leadsCaptured: number;
+    mrr: number;
+  };
+  feedItems: FeedItem[];
+  autopilot: {
+    running: boolean;
+    paused: boolean;
+    nextRunAt: number;
+    lastRunSummary: {
+      completedTasks: number;
+      postsCreated: number;
+      hitlPending: number;
+      durationText: string;
+    };
+    tasks: TaskScheduleItem[];
+  };
+  hitlQueue: HITLQueueItem[];
+  agents: {
+    all: AgentCard[];
+    running: RunningAgent[];
+    scheduled: ScheduledAgent[];
+  };
+}
+
+const isNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const isString = (value: unknown): value is string =>
+  typeof value === 'string';
+
 const SCHEDULED_AGENTS: ScheduledAgent[] = [
   { id: '1', name: 'content_strategist', schedule: 'Daily 07:00', nextRun: 'in 3h 14m', model: 'Sonnet', estDuration: '~45m', status: 'scheduled' },
   { id: '2', name: 'blog_writer', schedule: 'Daily 02:00', nextRun: 'in 2h 10m', model: 'Sonnet', estDuration: '~3m', status: 'scheduled' },
@@ -177,6 +215,7 @@ const SCHEDULED_AGENTS: ScheduledAgent[] = [
 ];
 
 export default function DashboardClient() {
+  const toast = useToast();
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [activeTab, setActiveTab] = useState('dash');
   const [activeDashLever, setActiveDashLever] = useState('overview');
@@ -185,6 +224,30 @@ export default function DashboardClient() {
   const [activeContentLever, setActiveContentLever] = useState('kb');
   const [activeContactsLever, setActiveContactsLever] = useState('all');
   const [activeSettingsLever, setActiveSettingsLever] = useState('billing');
+  const [testsPassedLabel, setTestsPassedLabel] = useState('503/503 PASS');
+  const [tevvScore, setTevvScore] = useState(95.4);
+  const [nextRunAt, setNextRunAt] = useState<number>(Date.now() + 2 * 60 * 60 * 1000);
+  const [autopilotRunning, setAutopilotRunning] = useState(false);
+  const [autopilotPaused, setAutopilotPaused] = useState(false);
+  const [countdownText, setCountdownText] = useState('02:04:03');
+  const [kpis, setKpis] = useState({
+    activeAgents: 12,
+    postsGenerated: 47,
+    leadsCaptured: 284,
+    mrr: 8320,
+  });
+  const [feedItems, setFeedItems] = useState<FeedItem[]>(FEED_ITEMS);
+  const [autopilotTasks, setAutopilotTasks] = useState<TaskScheduleItem[]>(AUTOPILOT_TASKS);
+  const [hitlQueueItems, setHitlQueueItems] = useState<HITLQueueItem[]>(HITL_QUEUE_ITEMS);
+  const [agentCards, setAgentCards] = useState<AgentCard[]>(AGENT_CARDS);
+  const [runningAgents, setRunningAgents] = useState<RunningAgent[]>(RUNNING_AGENTS);
+  const [scheduledAgents, setScheduledAgents] = useState<ScheduledAgent[]>(SCHEDULED_AGENTS);
+  const [lastRunSummary, setLastRunSummary] = useState({
+    completedTasks: 34,
+    postsCreated: 58,
+    hitlPending: 3,
+    durationText: '02:18',
+  });
 
   useEffect(() => {
     const stored = localStorage.getItem('virilocity-dashboard-theme');
@@ -202,6 +265,183 @@ export default function DashboardClient() {
     localStorage.setItem('virilocity-dashboard-theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    const syncCountdown = () => {
+      const seconds = Math.max(0, Math.floor((nextRunAt - Date.now()) / 1000));
+      const hh = String(Math.floor(seconds / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+      const ss = String(seconds % 60).padStart(2, '0');
+      setCountdownText(`${hh}:${mm}:${ss}`);
+    };
+
+    syncCountdown();
+    const timer = window.setInterval(syncCountdown, 1000);
+    return () => window.clearInterval(timer);
+  }, [nextRunAt]);
+
+  const applyDashboardData = (data: DashboardApiResponse) => {
+    if (isString(data.testsPassedLabel)) {
+      setTestsPassedLabel(data.testsPassedLabel);
+    }
+
+    if (isNumber(data.tevvScore)) {
+      setTevvScore(data.tevvScore);
+    }
+
+    if (data.kpis && typeof data.kpis === 'object') {
+      setKpis(prev => ({
+        activeAgents: isNumber(data.kpis.activeAgents) ? data.kpis.activeAgents : prev.activeAgents,
+        postsGenerated: isNumber(data.kpis.postsGenerated) ? data.kpis.postsGenerated : prev.postsGenerated,
+        leadsCaptured: isNumber(data.kpis.leadsCaptured) ? data.kpis.leadsCaptured : prev.leadsCaptured,
+        mrr: isNumber(data.kpis.mrr) ? data.kpis.mrr : prev.mrr,
+      }));
+    }
+
+    if (Array.isArray(data.feedItems)) {
+      setFeedItems(data.feedItems);
+    }
+
+    if (data.autopilot && typeof data.autopilot === 'object') {
+      if (Array.isArray(data.autopilot.tasks)) {
+        setAutopilotTasks(data.autopilot.tasks);
+      }
+      if (typeof data.autopilot.running === 'boolean') {
+        setAutopilotRunning(data.autopilot.running);
+      }
+      if (typeof data.autopilot.paused === 'boolean') {
+        setAutopilotPaused(data.autopilot.paused);
+      }
+      if (isNumber(data.autopilot.nextRunAt)) {
+        setNextRunAt(data.autopilot.nextRunAt);
+      }
+      if (data.autopilot.lastRunSummary && typeof data.autopilot.lastRunSummary === 'object') {
+        setLastRunSummary(prev => ({
+          completedTasks: isNumber(data.autopilot.lastRunSummary.completedTasks)
+            ? data.autopilot.lastRunSummary.completedTasks
+            : prev.completedTasks,
+          postsCreated: isNumber(data.autopilot.lastRunSummary.postsCreated)
+            ? data.autopilot.lastRunSummary.postsCreated
+            : prev.postsCreated,
+          hitlPending: isNumber(data.autopilot.lastRunSummary.hitlPending)
+            ? data.autopilot.lastRunSummary.hitlPending
+            : prev.hitlPending,
+          durationText: isString(data.autopilot.lastRunSummary.durationText)
+            ? data.autopilot.lastRunSummary.durationText
+            : prev.durationText,
+        }));
+      }
+    }
+
+    if (Array.isArray(data.hitlQueue)) {
+      setHitlQueueItems(data.hitlQueue);
+    }
+
+    if (data.agents && typeof data.agents === 'object') {
+      if (Array.isArray(data.agents.all)) {
+        setAgentCards(data.agents.all);
+      }
+      if (Array.isArray(data.agents.running)) {
+        setRunningAgents(data.agents.running);
+      }
+      if (Array.isArray(data.agents.scheduled)) {
+        setScheduledAgents(data.agents.scheduled);
+      }
+    }
+  };
+
+  const refreshDashboardData = async (silent = true) => {
+    try {
+      const res = await fetch('/dashboard/data', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to load dashboard data');
+      const data = (await res.json()) as DashboardApiResponse;
+      applyDashboardData(data);
+    } catch (error) {
+      if (!silent) {
+        const msg = error instanceof Error ? error.message : 'Failed to load dashboard data';
+        toast.error(msg);
+      }
+    }
+  };
+
+  useEffect(() => {
+    void refreshDashboardData(false);
+    const poll = window.setInterval(() => {
+      void refreshDashboardData(true);
+    }, 5000);
+
+    return () => window.clearInterval(poll);
+  }, []);
+
+  const postAction = async (action: string, id?: string) => {
+    const res = await fetch('/dashboard/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, id }),
+    });
+
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(err?.error ?? 'Action failed');
+    }
+
+    return (await res.json()) as {
+      data?: DashboardApiResponse;
+      result?: { succeeded: number; totalTasks: number };
+    };
+  };
+
+  const handleRunAutopilot = async () => {
+    try {
+      if (autopilotPaused) {
+        toast.info('Autopilot is paused. Resume it before running.');
+        return;
+      }
+
+      toast.info('Autopilot started. Polling progress every 5 seconds...');
+      const result = await postAction('runAutopilot');
+      if (result.data) applyDashboardData(result.data);
+
+      if (result.result) {
+        toast.success(`Autopilot finished: ${result.result.succeeded}/${result.result.totalTasks} tasks succeeded.`);
+      } else {
+        toast.success('Autopilot finished successfully.');
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to run autopilot';
+      toast.error(msg);
+    }
+  };
+
+  const handleToggleAutopilotPause = async () => {
+    try {
+      const action = autopilotPaused ? 'resumeAutopilot' : 'pauseAutopilot';
+      const result = await postAction(action);
+      if (result.data) applyDashboardData(result.data);
+
+      if (autopilotPaused) {
+        toast.success('Autopilot resumed.');
+      } else if (autopilotRunning) {
+        toast.info('Pause requested. Current cycle will stop between tasks.');
+      } else {
+        toast.success('Autopilot paused.');
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to update autopilot state';
+      toast.error(msg);
+    }
+  };
+
+  const handleHitlAction = async (id: string, action: 'approveHitl' | 'rejectHitl') => {
+    try {
+      const result = await postAction(action, id);
+      if (result.data) applyDashboardData(result.data);
+      toast.success(action === 'approveHitl' ? 'Item approved and queued.' : 'Item rejected and removed from queue.');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to process HITL action';
+      toast.error(msg);
+    }
+  };
+
   return (
     <div className={`min-h-screen dashboard-theme dashboard-theme--${theme}`}>
       {/* Container with max-width */}
@@ -210,7 +450,7 @@ export default function DashboardClient() {
         <DashboardHeader
           user={{ name: 'Keshav Choudhary', initials: 'KM' }}
           tenant="CloudOneSoftware LLC · Enterprise"
-          status={{ text: 'LIVE', count: '503/503 PASS' }}
+          status={{ text: 'LIVE', count: testsPassedLabel }}
           theme={theme}
           onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
         />
@@ -330,7 +570,7 @@ export default function DashboardClient() {
                   <KPICard
                     title="Active Agents"
                     icon="◎"
-                    value="12"
+                    value={kpis.activeAgents}
                     variant="teal"
                     change="▲ +3 from yesterday"
                     subtitle="of 39 total agents"
@@ -338,7 +578,7 @@ export default function DashboardClient() {
                   <KPICard
                     title="Posts Generated"
                     icon="◻"
-                    value="47"
+                    value={kpis.postsGenerated}
                     variant="teal"
                     change="▲ +12 vs avg"
                     subtitle="today · across all channels"
@@ -346,7 +586,7 @@ export default function DashboardClient() {
                   <KPICard
                     title="Leads Captured"
                     icon="◉"
-                    value="284"
+                    value={kpis.leadsCaptured}
                     variant="green"
                     valueColor="green"
                     change="▲ +31 this week"
@@ -355,7 +595,7 @@ export default function DashboardClient() {
                   <KPICard
                     title="MRR"
                     icon="$"
-                    value="$8,320"
+                    value={`$${kpis.mrr.toLocaleString()}`}
                     variant="gold"
                     valueColor="gold"
                     change="▲ +$640 this month"
@@ -470,7 +710,7 @@ export default function DashboardClient() {
                           NIST TEVV Compliance
                         </div>
                         <div className="font-display text-xl font-bold text-[rgba(14,200,198,0.9)] [text-shadow:0_0_20px_rgba(14,200,198,0.4)]">
-                          95.4
+                          {tevvScore.toFixed(1)}
                           <span className="text-[11px] text-[rgba(255,255,255,0.35)]">/100</span>
                         </div>
                       </div>
@@ -511,7 +751,7 @@ export default function DashboardClient() {
                           </div>
                         }
                       />
-                      <ActivityFeed items={FEED_ITEMS} />
+                      <ActivityFeed items={feedItems} />
                     </GlassCard>
                   </div>
                 </div>
@@ -530,17 +770,28 @@ export default function DashboardClient() {
                           Next Autopilot Run
                         </div>
                         <div className="font-display text-6xl font-bold text-[rgba(14,200,198,0.95)] mb-5 tracking-wider [text-shadow:0_0_35px_rgba(14,200,198,0.6)]">
-                          02:04:03
+                          {countdownText}
                         </div>
                         <div className="font-mono text-[11px] text-[rgba(255,255,255,0.45)] mb-6 leading-relaxed">
                           Every 6-8 hrs · CRON: 0 */6 * * * · NEXT: 02:30 PM UTC
                         </div>
                         <div className="flex justify-center gap-3">
-                          <button className="px-6 py-2.5 rounded-full bg-gradient-to-br from-[rgba(14,124,123,0.7)] to-[rgba(0,60,60,0.8)] border border-[rgba(14,200,198,0.4)] text-[rgba(14,200,198,1)] font-bold text-[13px] tracking-wide shadow-[0_4px_16px_rgba(0,0,0,0.4),0_0_24px_rgba(14,124,123,0.3)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.45),0_0_35px_rgba(14,124,123,0.5)] transition-all flex items-center gap-2.5">
-                            <span className="text-[15px]">▶</span> Run Now
+                          <button
+                            onClick={() => {
+                              void handleRunAutopilot();
+                            }}
+                            disabled={autopilotRunning || autopilotPaused}
+                            className="px-6 py-2.5 rounded-full bg-gradient-to-br from-[rgba(14,124,123,0.7)] to-[rgba(0,60,60,0.8)] border border-[rgba(14,200,198,0.4)] text-[rgba(14,200,198,1)] font-bold text-[13px] tracking-wide shadow-[0_4px_16px_rgba(0,0,0,0.4),0_0_24px_rgba(14,124,123,0.3)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.45),0_0_35px_rgba(14,124,123,0.5)] transition-all flex items-center gap-2.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <span className="text-[15px]">▶</span> {autopilotRunning ? 'Running…' : autopilotPaused ? 'Paused' : 'Run Now'}
                           </button>
-                          <button className="px-6 py-2.5 rounded-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.15)] text-[rgba(255,255,255,0.5)] font-bold text-[13px] tracking-wide hover:bg-[rgba(255,255,255,0.1)] hover:text-[rgba(255,255,255,0.8)] hover:border-[rgba(255,255,255,0.25)] transition-all flex items-center gap-2.5">
-                            <span className="text-[15px]">⏸</span> Pause
+                          <button
+                            onClick={() => {
+                              void handleToggleAutopilotPause();
+                            }}
+                            className="px-6 py-2.5 rounded-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.15)] text-[rgba(255,255,255,0.5)] font-bold text-[13px] tracking-wide hover:bg-[rgba(255,255,255,0.1)] hover:text-[rgba(255,255,255,0.8)] hover:border-[rgba(255,255,255,0.25)] transition-all flex items-center gap-2.5"
+                          >
+                            <span className="text-[15px]">{autopilotPaused ? '▶' : '⏸'}</span> {autopilotPaused ? 'Resume' : 'Pause'}
                           </button>
                         </div>
                       </div>
@@ -554,15 +805,15 @@ export default function DashboardClient() {
                       <div className="grid grid-cols-3 gap-4">
                         <div className="text-center p-5 rounded-xl bg-gradient-to-br from-[rgba(14,124,123,0.12)] to-[rgba(0,38,38,0.08)] border border-[rgba(14,124,123,0.28)]">
                           <div className="font-display text-5xl font-bold text-[rgba(14,200,198,0.95)] mb-2 [text-shadow:0_0_24px_rgba(14,200,198,0.5)]">
-                            34
+                            {lastRunSummary.completedTasks}
                           </div>
                           <div className="font-mono text-[10px] text-[rgba(255,255,255,0.45)] leading-relaxed">
-                            ✓ Completed in 02:18 · All agents · No issues
+                            ✓ Completed in {lastRunSummary.durationText} · All agents · No issues
                           </div>
                         </div>
                         <div className="text-center p-5 rounded-xl bg-gradient-to-br from-[rgba(14,124,123,0.12)] to-[rgba(0,38,38,0.08)] border border-[rgba(14,124,123,0.28)]">
                           <div className="font-display text-5xl font-bold text-[rgba(14,200,198,0.95)] mb-2 [text-shadow:0_0_24px_rgba(14,200,198,0.5)]">
-                            58
+                            {lastRunSummary.postsCreated}
                           </div>
                           <div className="font-mono text-[10px] text-[rgba(255,255,255,0.45)] leading-relaxed">
                             Posts created · Blog 34 · LinkedIn 24
@@ -570,7 +821,7 @@ export default function DashboardClient() {
                         </div>
                         <div className="text-center p-5 rounded-xl bg-gradient-to-br from-[rgba(201,168,76,0.12)] to-[rgba(55,35,0,0.08)] border border-[rgba(201,168,76,0.32)]">
                           <div className="font-display text-5xl font-bold text-[rgba(255,210,100,0.95)] mb-2 [text-shadow:0_0_24px_rgba(201,168,76,0.5)]">
-                            3
+                            {lastRunSummary.hitlPending}
                           </div>
                           <div className="font-mono text-[10px] text-[rgba(255,255,255,0.45)] leading-relaxed">
                             HITL pending · Reddit 2 · Email 1
@@ -608,7 +859,7 @@ export default function DashboardClient() {
                           </tr>
                         </thead>
                         <tbody>
-                          {AUTOPILOT_TASKS.map((item) => (
+                          {autopilotTasks.map((item) => (
                             <tr
                               key={item.agent}
                               className="border-b border-[rgba(255,255,255,0.045)] transition-colors hover:bg-[rgba(255,255,255,0.018)]"
@@ -652,13 +903,13 @@ export default function DashboardClient() {
                     Human-in-the-Loop Queue
                   </div>
                   <div className="rounded-full border border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(255,210,100,0.92)] shadow-[0_0_18px_rgba(201,168,76,0.15)]">
-                    3 Pending Approval
+                    {hitlQueueItems.length} Pending Approval
                   </div>
                 </div>
 
                 {/* Queue Items */}
                 <div className="space-y-4">
-                  {HITL_QUEUE_ITEMS.map((item) => (
+                  {hitlQueueItems.map((item) => (
                     <GlassCard key={item.id} className="p-5 border-[rgba(255,255,255,0.08)]">
                       {/* Header with subreddit and title */}
                       <div className="mb-3.5 pb-3 border-b border-[rgba(255,255,255,0.09)]">
@@ -675,7 +926,7 @@ export default function DashboardClient() {
                           </span>
                           <span className="text-[rgba(255,255,255,0.22)]">·</span>
                           <span className="font-mono text-[10px] text-[rgba(255,255,255,0.42)]">
-                            Queued 30 min ago
+                            Queued {item.queuedAgo ?? 'recently'}
                           </span>
                           <span className="text-[rgba(255,255,255,0.22)]">·</span>
                           <span className="rounded-full border border-[rgba(201,168,76,0.38)] bg-[rgba(201,168,76,0.12)] px-2.5 py-1 font-mono text-[8px] text-[rgba(255,210,100,0.92)] font-medium">
@@ -693,15 +944,28 @@ export default function DashboardClient() {
 
                       {/* Action Buttons */}
                       <div className="flex gap-3 items-center">
-                        <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-br from-[rgba(14,124,123,0.65)] to-[rgba(0,60,60,0.75)] border-2 border-[rgba(14,200,198,0.4)] text-[rgba(14,200,198,1)] font-bold text-[13px] tracking-wide shadow-[0_4px_14px_rgba(0,0,0,0.4),0_0_22px_rgba(14,124,123,0.28)] hover:shadow-[0_5px_20px_rgba(0,0,0,0.45),0_0_32px_rgba(14,124,123,0.42)] transition-all">
+                        <button
+                          onClick={() => {
+                            void handleHitlAction(item.id, 'approveHitl');
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-br from-[rgba(14,124,123,0.65)] to-[rgba(0,60,60,0.75)] border-2 border-[rgba(14,200,198,0.4)] text-[rgba(14,200,198,1)] font-bold text-[13px] tracking-wide shadow-[0_4px_14px_rgba(0,0,0,0.4),0_0_22px_rgba(14,124,123,0.28)] hover:shadow-[0_5px_20px_rgba(0,0,0,0.45),0_0_32px_rgba(14,124,123,0.42)] transition-all"
+                        >
                           <span className="text-[15px]">✓</span>
                           Approve & Post
                         </button>
-                        <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[rgba(255,255,255,0.045)] border-2 border-[rgba(255,255,255,0.14)] text-[rgba(255,255,255,0.52)] font-semibold text-[13px] tracking-wide hover:bg-[rgba(255,255,255,0.08)] hover:text-[rgba(255,255,255,0.78)] hover:border-[rgba(255,255,255,0.22)] transition-all">
+                        <button
+                          onClick={() => toast.info('Draft editing flow will be connected in the next pass.')}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[rgba(255,255,255,0.045)] border-2 border-[rgba(255,255,255,0.14)] text-[rgba(255,255,255,0.52)] font-semibold text-[13px] tracking-wide hover:bg-[rgba(255,255,255,0.08)] hover:text-[rgba(255,255,255,0.78)] hover:border-[rgba(255,255,255,0.22)] transition-all"
+                        >
                           <span className="text-[15px]">←</span>
                           Edit Draft
                         </button>
-                        <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-br from-[rgba(180,30,30,0.38)] to-[rgba(100,10,10,0.5)] border-2 border-[rgba(255,80,80,0.35)] text-[rgba(255,120,120,0.98)] font-bold text-[13px] tracking-wide shadow-[0_4px_14px_rgba(0,0,0,0.4),0_0_20px_rgba(180,30,30,0.22)] hover:shadow-[0_5px_20px_rgba(0,0,0,0.45),0_0_30px_rgba(180,30,30,0.38)] transition-all">
+                        <button
+                          onClick={() => {
+                            void handleHitlAction(item.id, 'rejectHitl');
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-br from-[rgba(180,30,30,0.38)] to-[rgba(100,10,10,0.5)] border-2 border-[rgba(255,80,80,0.35)] text-[rgba(255,120,120,0.98)] font-bold text-[13px] tracking-wide shadow-[0_4px_14px_rgba(0,0,0,0.4),0_0_20px_rgba(180,30,30,0.22)] hover:shadow-[0_5px_20px_rgba(0,0,0,0.45),0_0_30px_rgba(180,30,30,0.38)] transition-all"
+                        >
                           <span className="text-[15px]">✗</span>
                           Reject
                         </button>
@@ -721,7 +985,7 @@ export default function DashboardClient() {
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
                     <span className="text-[rgba(14,200,198,0.75)]">0100</span> user IDs
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,210,100,0.85)]">p.3</span> HITL pending
+                    <span className="text-[rgba(255,210,100,0.85)]">p.{hitlQueueItems.length}</span> HITL pending
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
                     <span className="text-[rgba(255,255,255,0.25)]">(Timeline: Lifetime 100 / Y1: Current Cycle FY26 → deploy Q2:q-FY27 → TTM ago → Strategic Refresh)</span>
                   </div>
@@ -752,7 +1016,7 @@ export default function DashboardClient() {
 
                 {/* Agent Cards Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                  {AGENT_CARDS.map((agent) => (
+                  {agentCards.map((agent) => (
                     <GlassCard key={agent.id} className="p-5 border-[rgba(255,255,255,0.08)]">
                       {/* Agent Header */}
                       <div className="mb-4 flex items-start justify-between">
@@ -852,14 +1116,14 @@ export default function DashboardClient() {
                   </div>
                   <div className="flex gap-2.5">
                     <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors">
-                      12 Active
+                      {runningAgents.length} Active
                     </button>
                   </div>
                 </div>
 
                 {/* Running Agents List */}
                 <div className="space-y-3 mb-6">
-                  {RUNNING_AGENTS.map((agent) => (
+                  {runningAgents.map((agent) => (
                     <GlassCard key={agent.id} className="px-5 py-4 border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]">
                       <div className="flex items-center gap-5">
                         {/* Circular Progress Indicator */}
@@ -988,7 +1252,7 @@ export default function DashboardClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {SCHEDULED_AGENTS.map((agent) => (
+                      {scheduledAgents.map((agent) => (
                         <tr key={agent.id} className="border-b border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)] transition-colors">
                           <td className="px-5 py-3.5">
                             <div className="font-[Rajdhani] text-[14px] font-semibold text-[rgba(255,255,255,0.88)]">
@@ -1100,10 +1364,10 @@ export default function DashboardClient() {
           <div className="px-5 py-2 bg-[rgba(0,0,0,0.42)] border-t border-[rgba(255,255,255,0.05)] flex justify-between items-center">
             <div className="flex gap-4 items-center">
               <div className="flex items-center gap-1.5 font-mono text-[8.5px] text-[rgba(255,255,255,0.3)]">
-                <span className="text-[rgba(14,200,198,0.75)]">12</span> Active
+                <span className="text-[rgba(14,200,198,0.75)]">{runningAgents.length}</span> Active
               </div>
               <div className="flex items-center gap-1.5 font-mono text-[8.5px] text-[rgba(255,255,255,0.3)]">
-                <span className="text-[rgba(14,200,198,0.75)]">503</span> Tests Passing
+                <span className="text-[rgba(14,200,198,0.75)]">{String(testsPassedLabel).split('/')[0]}</span> Tests Passing
               </div>
               <div className="flex items-center gap-1.5 font-mono text-[8.5px] text-[rgba(255,255,255,0.3)]">
                 Uptime: <span className="text-[rgba(14,200,198,0.75)]">99.8%</span>
@@ -1115,6 +1379,8 @@ export default function DashboardClient() {
           </div>
         </div>
       </div>
+
+      <ToastContainer toasts={toast.toasts} onDismiss={toast.dismiss} />
     </div>
   );
 }

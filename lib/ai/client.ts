@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import Anthropic from '@anthropic-ai/sdk';
 import { MODELS, HAIKU_AGENTS } from '../types/index';
-import { applyFairnessFilter, type FairnessResult } from './fairness.js';
+import { applyFairnessFilter, type FairnessResult } from './fairness';
 import { withRetry, trunc } from '../utils/index';
 import type { AgentType, Tier } from '../types/index';
 

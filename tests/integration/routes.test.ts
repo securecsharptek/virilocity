@@ -27,7 +27,7 @@ import { POST as checkout    } from '../../app/api/billing/checkout/route';
 import { REDDIT_REQUIRES_HUMAN_APPROVAL, VERSION, PLATFORM, AGENT_COUNT } from '../../lib/types/index';
 // ── Mock auth middleware (vi.mock is hoisted by Vitest) ───────────────────────
 vi.mock('../../lib/auth/middleware', () => ({
-  authenticate: vi.fn().mockImplementation(async (header) => {
+  authenticate: vi.fn().mockImplementation(async (header: string | null | undefined) => {
     if (header === 'Bearer valid.test.token') {
       return {
         ok: true,
@@ -44,9 +44,9 @@ vi.mock('../../lib/auth/middleware', () => ({
     }
     return { ok: false, error: { type: 'missing_token' } };
   }),
-  extractBearer: (h) => (h?.startsWith('Bearer ') ? h.slice(7) : null),
-  authErrorToHttp: (e) => {
-    const map = {
+  extractBearer: (h: string | null | undefined) => (h?.startsWith('Bearer ') ? h.slice(7) : null),
+  authErrorToHttp: (e: { type?: string }) => {
+    const map: Record<string, [number, Record<string, unknown>]> = {
       missing_token:      [401, { error: 'Authorization header required' }],
       invalid_token:      [401, { error: 'Invalid or expired token' }],
       rate_limited:       [429, { error: 'Rate limit exceeded', retryAfter: 60 }],
@@ -95,7 +95,7 @@ describe('GET /api/health/live', () => {
 
 describe('GET /api/health/ready', () => {
   it('returns JSON with checks object', async () => {
-    const res = await healthReady(makeReq('GET', '/api/health/ready'));
+    const res = await healthReady();
     const body = await json(res);
     expect(body['checks']).toBeDefined();
     expect(['healthy', 'degraded']).toContain(body['status']);

@@ -5,7 +5,7 @@
 // B2B org membership validation
 // ─────────────────────────────────────────────────────────────────────────────
 import { importSPKI, jwtVerify } from 'jose';
-import { checkRateLimit } from '../cache/ratelimit.js';
+import { checkRateLimit } from '../cache/ratelimit';
 import type { Tenant } from '../types/index';
 
 const ALGORITHM = 'RS256';

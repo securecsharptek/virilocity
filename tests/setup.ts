@@ -6,19 +6,21 @@
 import { vi } from 'vitest';
 
 // ── Env defaults ──────────────────────────────────────────────────────────────
-process.env['NODE_ENV']             = 'test';
-process.env['JWT_PUBLIC_KEY']       = 'test-public-key';
-process.env['ANTHROPIC_API_KEY']    = 'test-anthropic-key';
-process.env['STRIPE_SECRET_KEY']    = 'sk_test_placeholder';
-process.env['STRIPE_WEBHOOK_SECRET']   = 'whsec_test_placeholder';
-process.env['HUBSPOT_CLIENT_SECRET']   = 'test-hubspot-secret-32-chars!!!!!';
-process.env['HUBSPOT_CLIENT_ID']       = 'test-hubspot-client-id';
-process.env['NEXT_PUBLIC_APP_URL']     = 'https://app.virilocity.io';
-process.env['ENTRA_CLIENT_ID']         = 'test-entra-client-id';
-process.env['ENTRA_CLIENT_SECRET']     = 'test-entra-secret';
-process.env['ENTRA_TENANT_ID']         = 'test-tenant-id';
-process.env['AUTH_SECRET']             = 'test-auth-secret-min-32-chars!!!!!';
-process.env['CRON_SECRET']             = 'test-cron-secret';
+Object.assign(process.env, {
+  NODE_ENV: 'test',
+  JWT_PUBLIC_KEY: 'test-public-key',
+  ANTHROPIC_API_KEY: 'test-anthropic-key',
+  STRIPE_SECRET_KEY: 'sk_test_placeholder',
+  STRIPE_WEBHOOK_SECRET: 'whsec_test_placeholder',
+  HUBSPOT_CLIENT_SECRET: 'test-hubspot-secret-32-chars!!!!!',
+  HUBSPOT_CLIENT_ID: 'test-hubspot-client-id',
+  NEXT_PUBLIC_APP_URL: 'https://app.virilocity.io',
+  ENTRA_CLIENT_ID: 'test-entra-client-id',
+  ENTRA_CLIENT_SECRET: 'test-entra-secret',
+  ENTRA_TENANT_ID: 'test-tenant-id',
+  AUTH_SECRET: 'test-auth-secret-min-32-chars!!!!!',
+  CRON_SECRET: 'test-cron-secret',
+});
 
 // Ensure Upstash is NOT configured so in-memory fallback is used in tests
 delete process.env['UPSTASH_REDIS_REST_URL'];
@@ -94,7 +96,7 @@ vi.mock('drizzle-orm/neon-http', () => ({
 // ── Mock Auth Middleware ───────────────────────────────────────────────────────
 // Integration tests use 'Bearer valid.test.token' — return a valid Pro B2B tenant
 vi.mock('../lib/auth/middleware.js', () => ({
-  authenticate: vi.fn().mockImplementation(async (header) => {
+  authenticate: vi.fn().mockImplementation(async (header: string | null | undefined) => {
     if (header === 'Bearer valid.test.token') {
       return {
         ok: true,
@@ -111,9 +113,9 @@ vi.mock('../lib/auth/middleware.js', () => ({
     }
     return { ok: false, error: { type: 'missing_token' } };
   }),
-  extractBearer:  (h) => (h?.startsWith('Bearer ') ? h.slice(7) : null),
-  authErrorToHttp: (e) => {
-    const map = {
+  extractBearer:  (h: string | null | undefined) => (h?.startsWith('Bearer ') ? h.slice(7) : null),
+  authErrorToHttp: (e: { type: string; detail?: string; required?: string }) => {
+    const map: Record<string, [number, Record<string, unknown>]> = {
       missing_token:      [401, { error: 'Authorization header required' }],
       invalid_token:      [401, { error: 'Invalid or expired token', detail: e.detail }],
       rate_limited:       [429, { error: 'Rate limit exceeded', retryAfter: 60 }],

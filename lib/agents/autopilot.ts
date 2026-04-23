@@ -3,8 +3,7 @@
 // 11 daily tasks · B2B/B2C aware · Fairness pipeline for content agents
 // HITL: Reddit always blocked from autopilot — requiresHumanApproval hardcoded
 // ─────────────────────────────────────────────────────────────────────────────
-import { runAgentCall, CONTENT_AGENTS } from '../ai/client.js';
-import { applyFairnessFilter }          from '../ai/fairness.js';
+import { runAgentCall } from '../ai/client';
 import { uid, now, trunc, withinLimit } from '../utils/index';
 import { TIER_LIMITS, REDDIT_REQUIRES_HUMAN_APPROVAL, AGENT_COUNT } from '../types/index';
 import type { Tenant, AgentType, Tier }  from '../types/index';
@@ -35,6 +34,10 @@ export interface AutopilotResult {
   durationMs: number;
   executions: AgentExecution[];
   createdAt:  string;
+}
+
+export interface RunAutopilotOptions {
+  shouldStop?: () => boolean;
 }
 
 // ── 11 daily autopilot tasks (Reddit excluded — HITL gate) ───────────────────
@@ -119,7 +122,10 @@ export const runAgent = async (
 };
 
 // ── Full autopilot orchestrator ───────────────────────────────────────────────
-export const runAutopilot = async (tenant: Tenant): Promise<AutopilotResult> => {
+export const runAutopilot = async (
+  tenant: Tenant,
+  options: RunAutopilotOptions = {},
+): Promise<AutopilotResult> => {
   const runId    = uid('run');
   const start    = Date.now();
   const limits   = TIER_LIMITS[tenant.tier];
@@ -132,9 +138,30 @@ export const runAutopilot = async (tenant: Tenant): Promise<AutopilotResult> => 
   );
 
   // Run sequentially (avoids Claude API burst limits)
-  for (const agent of tasks) {
+  for (let index = 0; index < tasks.length; index += 1) {
+    const agent = tasks[index]!;
+
+    // Cooperative stop for dashboard pause requests.
+    if (options.shouldStop?.()) {
+      for (let skipIndex = index; skipIndex < tasks.length; skipIndex += 1) {
+        const skippedAgent = tasks[skipIndex]!;
+        results.push({
+          id: uid('exec'),
+          tenantId: tenant.id,
+          agentType: skippedAgent,
+          model: 'none',
+          status: 'skipped',
+          inputSummary: 'Paused before execution',
+          durationMs: 0,
+          createdAt: now(),
+        });
+      }
+      break;
+    }
+
     const exec = await runAgent(agent, tenant, {});
     results.push(exec);
+
     // Small delay between agents to respect rate limits
     await new Promise(r => setTimeout(r, 100));
   }

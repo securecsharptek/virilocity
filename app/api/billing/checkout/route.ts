@@ -9,7 +9,11 @@ import { PRICES, TIER_LIMITS } from '../../../../lib/types/index';
 
 export const runtime = 'nodejs';
 
-const stripe = new Stripe(process.env['STRIPE_SECRET_KEY'] ?? '', { apiVersion: '2025-02-24.acacia' });
+const getStripe = () => {
+  const apiKey = process.env['STRIPE_SECRET_KEY'];
+  if (!apiKey) throw new Error('STRIPE_SECRET_KEY is not configured');
+  return new Stripe(apiKey, { apiVersion: '2025-02-24.acacia' });
+};
 
 const STRIPE_PRICES: Record<string, { monthly: string; annual: string }> = {
   starter: { monthly: process.env['STRIPE_PRICE_STARTER_MONTHLY'] ?? 'price_starter_monthly', annual: process.env['STRIPE_PRICE_STARTER_ANNUAL'] ?? 'price_starter_annual' },
@@ -33,6 +37,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const appUrl   = process.env['NEXT_PUBLIC_APP_URL'] ?? 'https://app.virilocity.io';
   const limits   = TIER_LIMITS[tier as keyof typeof TIER_LIMITS];
 
+  const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
     mode:               'subscription',
     payment_method_types: ['card'],

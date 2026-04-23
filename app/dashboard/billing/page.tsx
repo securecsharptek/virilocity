@@ -17,7 +17,7 @@ const UPGRADE_TIERS = [
 ] as const;
 
 export default function BillingPage() {
-  const currentTier  = 'free';
+  const currentTier: keyof typeof PRICES = 'free';
   const currentPrice = PRICES[currentTier].monthly;
 
   return (
@@ -111,7 +111,7 @@ export default function BillingPage() {
                 ].join(' ')}
                 aria-label={`Upgrade to ${tier.id} plan for $${tier.monthly} per month`}
               >
-                {currentTier === tier.id ? 'Current Plan' : `Upgrade to ${tier.id.charAt(0).toUpperCase() + tier.id.slice(1)}`}
+                {`Upgrade to ${tier.id.charAt(0).toUpperCase() + tier.id.slice(1)}`}
               </a>
             </article>
           ))}

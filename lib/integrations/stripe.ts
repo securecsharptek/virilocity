@@ -7,9 +7,13 @@ import Stripe      from 'stripe';
 import { PRICES, GOMEGA_REF, TIER_LIMITS } from '../types/index';
 import type { Tier, Cycle, TenantModel }   from '../types/index';
 
-export const stripe = new Stripe(process.env['STRIPE_SECRET_KEY'] ?? '', {
-  apiVersion: '2025-02-24.acacia',
-});
+export const getStripe = () => {
+  const apiKey = process.env['STRIPE_SECRET_KEY'];
+  if (!apiKey) throw new Error('STRIPE_SECRET_KEY is not configured');
+  return new Stripe(apiKey, {
+    apiVersion: '2025-02-24.acacia',
+  });
+};
 
 // ── Price ID map (set real IDs in env vars) ───────────────────────────────────
 export const STRIPE_PRICES: Record<string, Record<Cycle, string>> = {
@@ -55,6 +59,7 @@ export const createCheckoutSession = async (
   if (!priceMap) throw new Error(`Unknown tier: ${tier}`);
 
   const limits = TIER_LIMITS[tier];
+  const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
     mode:                  'subscription',
     payment_method_types:  ['card'],
@@ -83,6 +88,7 @@ export const createPortalSession = async (
   customerId: string,
   returnUrl:  string,
 ): Promise<string> => {
+  const stripe = getStripe();
   const session = await stripe.billingPortal.sessions.create({
     customer:   customerId,
     return_url: returnUrl,
