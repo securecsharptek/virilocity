@@ -7,6 +7,7 @@ interface GlassCardProps {
   children: ReactNode;
   variant?: 'default' | 'teal' | 'gold' | 'red' | 'green';
   className?: string;
+  style?: React.CSSProperties;
   onClick?: () => void;
   hover?: boolean;
 }
@@ -23,6 +24,7 @@ export default function GlassCard({
   children,
   variant = 'default',
   className = '',
+  style,
   onClick,
   hover = true,
 }: GlassCardProps) {
@@ -33,6 +35,7 @@ export default function GlassCard({
   return (
     <div
       className={`${baseStyles} ${variantStyle} ${hoverStyle} ${className}`}
+      style={style}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
