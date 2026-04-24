@@ -37,3 +37,6 @@ next-env.d.ts
 
 # SBOM (generated in CI — do not commit)
 sbom.json
+
+# Markdown
+*.md
