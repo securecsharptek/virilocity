@@ -196,7 +196,28 @@ interface DashboardApiResponse {
     running: RunningAgent[];
     scheduled: ScheduledAgent[];
   };
+  kbDocuments?: KnowledgeDoc[];
+  orgMembers?: OrgMember[];
+  userProfile?: {
+    name: string;
+    initials: string;
+    email: string;
+    tenant: string;
+    tier: string;
+  };
+  constants?: {
+    agentsTotal: number;
+    redditRequiresHumanApproval: boolean;
+  };
 }
+
+type OrgMember = {
+  id: string;
+  initials: string;
+  name: string;
+  email: string;
+  role: string;
+};
 
 const isNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
@@ -610,6 +631,18 @@ export default function DashboardClient() {
     hitlPending: 3,
     durationText: '02:18',
   });
+  const [userProfile, setUserProfile] = useState({ name: '', initials: '', email: '', tenant: '', tier: 'free' });
+  const [kbDocuments, setKbDocuments] = useState<KnowledgeDoc[]>(KNOWLEDGE_BASE_DOCS);
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  const [agentsTotal, setAgentsTotal] = useState(39);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [kbUploadTitle, setKbUploadTitle] = useState('');
+  const [kbUploadCategory, setKbUploadCategory] = useState<'product-docs' | 'brand' | 'competitor-intel'>('product-docs');
+  const [kbUploadContent, setKbUploadContent] = useState('');
+  const [showKbUpload, setShowKbUpload] = useState(false);
+  const [kbUploadLoading, setKbUploadLoading] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('virilocity-dashboard-theme');
@@ -709,6 +742,22 @@ export default function DashboardClient() {
         setScheduledAgents(data.agents.scheduled);
       }
     }
+
+    if (Array.isArray(data.kbDocuments)) {
+      setKbDocuments(data.kbDocuments);
+    }
+
+    if (Array.isArray(data.orgMembers)) {
+      setOrgMembers(data.orgMembers);
+    }
+
+    if (data.userProfile && typeof data.userProfile === 'object') {
+      setUserProfile(data.userProfile);
+    }
+
+    if (data.constants?.agentsTotal) {
+      setAgentsTotal(data.constants.agentsTotal);
+    }
   };
 
   const refreshDashboardData = async (silent = true) => {
@@ -804,14 +853,86 @@ export default function DashboardClient() {
     }
   };
 
+  const handleInviteMember = async () => {
+    if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
+      toast.error('Enter a valid email address.');
+      return;
+    }
+    setInviteLoading(true);
+    try {
+      const res = await fetch('/dashboard/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'inviteMember', email: inviteEmail.trim() }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? 'Invite failed');
+      }
+      const result = (await res.json()) as { data?: DashboardApiResponse };
+      if (result.data) applyDashboardData(result.data);
+      toast.success(`Invite sent to ${inviteEmail.trim()}.`);
+      setInviteEmail('');
+      setShowInviteForm(false);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to invite member';
+      toast.error(msg);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleKbUpload = async () => {
+    if (!kbUploadTitle.trim()) {
+      toast.error('Document title is required.');
+      return;
+    }
+    setKbUploadLoading(true);
+    try {
+      const res = await fetch('/dashboard/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'uploadKbDoc',
+          title: kbUploadTitle.trim(),
+          category: kbUploadCategory,
+          content: kbUploadContent,
+        }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? 'Upload failed');
+      }
+      const result = (await res.json()) as { data?: DashboardApiResponse };
+      if (result.data) applyDashboardData(result.data);
+      toast.success(`"${kbUploadTitle.trim()}" added to Knowledge Base.`);
+      setKbUploadTitle('');
+      setKbUploadContent('');
+      setKbUploadCategory('product-docs');
+      setShowKbUpload(false);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to upload document';
+      toast.error(msg);
+    } finally {
+      setKbUploadLoading(false);
+    }
+  };
+
   return (
     <div className={`min-h-screen dashboard-theme dashboard-theme--${theme}`}>
       {/* Container with max-width */}
       <div className="relative z-10 max-w-[1100px] mx-auto px-4 pb-10">
         {/* Header */}
         <DashboardHeader
-          user={{ name: 'Keshav Choudhary', initials: 'KM' }}
-          tenant="CloudOneSoftware LLC · Enterprise"
+          user={{
+            name: userProfile.name || 'Loading…',
+            initials: userProfile.initials || '…',
+          }}
+          tenant={
+            userProfile.tenant
+              ? `${userProfile.tenant} · ${userProfile.tier.charAt(0).toUpperCase() + userProfile.tier.slice(1)}`
+              : 'Loading…'
+          }
           status={{ text: 'LIVE', count: testsPassedLabel }}
           theme={theme}
           onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
@@ -1442,13 +1563,13 @@ export default function DashboardClient() {
                   </div>
                   <div className="flex gap-2.5">
                     <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors">
-                      33 Running
+                      {agentCards.filter(a => a.status === 'running').length} Running
                     </button>
                     <button className="rounded-full border border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(255,210,100,0.92)] shadow-[0_0_18px_rgba(201,168,76,0.15)] hover:bg-[rgba(201,168,76,0.18)] transition-colors">
-                      5 HITL Gated
+                      {agentCards.filter(a => a.status === 'hitl').length} HITL Gated
                     </button>
                     <button className="rounded-full border border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.05)] px-3 py-1.5 font-mono text-[9px] text-[rgba(255,255,255,0.52)] shadow-[0_0_12px_rgba(0,0,0,0.15)] hover:bg-[rgba(255,255,255,0.08)] transition-colors">
-                      36 Idle
+                      {agentCards.filter(a => a.status === 'idle').length} Idle
                     </button>
                   </div>
                 </div>
@@ -1522,24 +1643,22 @@ export default function DashboardClient() {
                 {/* Showing Info */}
                 <div className="mb-4 text-center">
                   <div className="font-mono text-[10px] text-[rgba(255,255,255,0.3)]">
-                    Showing 9 of 39 agents · <span className="text-[rgba(14,200,198,0.7)] cursor-pointer hover:text-[rgba(14,200,198,0.9)]">View all →</span>
+                    Showing {agentCards.length} of {agentsTotal} agents · <span className="text-[rgba(14,200,198,0.7)] cursor-pointer hover:text-[rgba(14,200,198,0.9)]">View all →</span>
                   </div>
                 </div>
 
                 {/* Bottom Stats Bar */}
                 <div className="mt-6 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
                   <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
-                    <span className="text-[rgba(14,200,198,0.75)]">◉ 33</span> agents running
+                    <span className="text-[rgba(14,200,198,0.75)]">◉ {agentCards.filter(a => a.status === 'running').length}</span> agents running
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">000/000</span> tests pass
+                    <span className="text-[rgba(14,200,198,0.75)]">{testsPassedLabel}</span>
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">TEVV 96.4 /100</span>
+                    <span className="text-[rgba(14,200,198,0.75)]">TEVV {tevvScore.toFixed(1)} /100</span>
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
                     <span className="text-[rgba(14,200,198,0.75)]">BIAS gate &gt;70</span>
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,210,100,0.85)]">▲ 3</span> HITL pending
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,255,255,0.25)]">FinanceSoftware LLC · R: Kenneth Wells PTO → Jeremy City #2 · CDP guy → Microsoft Partner</span>
+                    <span className="text-[rgba(255,210,100,0.85)]">▲ {hitlQueueItems.length}</span> HITL pending
                   </div>
                 </div>
               </div>
@@ -1626,17 +1745,15 @@ export default function DashboardClient() {
                 {/* Bottom Stats Bar */}
                 <div className="mt-6 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
                   <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
-                    <span className="text-[rgba(14,200,198,0.75)]">◉ 12</span> agents running
+                    <span className="text-[rgba(14,200,198,0.75)]">◉ {runningAgents.length}</span> agents running
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">000,000</span> tests pass
+                    <span className="text-[rgba(14,200,198,0.75)]">{testsPassedLabel}</span>
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">TEVV 96.4 /100</span>
+                    <span className="text-[rgba(14,200,198,0.75)]">TEVV {tevvScore.toFixed(1)} /100</span>
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
                     <span className="text-[rgba(14,200,198,0.75)]">BIAS gate &gt;70</span>
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,210,100,0.85)]">▲ 3</span> HITL pending
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,255,255,0.25)]">CloudOneSoftware LLC - Enterprise - R: #import Wells Keljo 503 - Jeremy City #2 - CDP guy - Microsoft Partner</span>
+                    <span className="text-[rgba(255,210,100,0.85)]">▲ {hitlQueueItems.length}</span> HITL pending
                   </div>
                 </div>
               </div>
@@ -1738,17 +1855,15 @@ export default function DashboardClient() {
                 {/* Bottom Stats Bar */}
                 <div className="mt-6 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
                   <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
-                    <span className="text-[rgba(14,200,198,0.75)]">◉ 12</span> agents running
+                    <span className="text-[rgba(14,200,198,0.75)]">◉ {runningAgents.length}</span> agents running
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">000/000</span> tests pass
+                    <span className="text-[rgba(14,200,198,0.75)]">{testsPassedLabel}</span>
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">TEVV 96.4 /100</span>
+                    <span className="text-[rgba(14,200,198,0.75)]">TEVV {tevvScore.toFixed(1)} /100</span>
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
                     <span className="text-[rgba(14,200,198,0.75)]">BIAS gate &gt;70</span>
                     <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,210,100,0.85)]">▲ 3</span> HITL pending
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,255,255,0.25)]">FinanceSoftware LLC - R: #export Mello 246 - Jeremy City #2 - LCP guy - Microsoft Partner</span>
+                    <span className="text-[rgba(255,210,100,0.85)]">▲ {hitlQueueItems.length}</span> HITL pending
                   </div>
                 </div>
               </div>
@@ -2166,12 +2281,12 @@ export default function DashboardClient() {
                     Knowledge Base
                   </div>
                   <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]">
-                    12 Documents
+                    {kbDocuments.length} Documents
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  {KNOWLEDGE_BASE_DOCS.map((doc) => (
+                  {kbDocuments.map((doc) => (
                     <GlassCard
                       key={doc.id}
                       className="flex flex-col px-5 py-4 rounded-2xl border-[rgba(255,255,255,0.1)] shadow-[0_8px_24px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.1)]"
@@ -2216,13 +2331,73 @@ export default function DashboardClient() {
                     </GlassCard>
                   ))}
 
-                  <button className="min-h-[128px] rounded-2xl border border-dashed border-[rgba(14,188,186,0.4)] bg-[rgba(2,18,28,0.72)] hover:bg-[rgba(3,28,40,0.82)] hover:border-[rgba(14,188,186,0.58)] transition-all duration-200 flex flex-col items-center justify-center text-center gap-2">
+                  <button
+                    onClick={() => setShowKbUpload(true)}
+                    className="min-h-[128px] rounded-2xl border border-dashed border-[rgba(14,188,186,0.4)] bg-[rgba(2,18,28,0.72)] hover:bg-[rgba(3,28,40,0.82)] hover:border-[rgba(14,188,186,0.58)] transition-all duration-200 flex flex-col items-center justify-center text-center gap-2">
                     <span className="text-[26px] leading-none text-[rgba(24,214,220,0.72)] font-light">+</span>
                     <span className="font-mono text-[10px] tracking-[1.4px] text-[rgba(24,214,220,0.68)]">
                       Upload New Document
                     </span>
                   </button>
                 </div>
+
+                {/* KB Upload Modal */}
+                {showKbUpload && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.7)]">
+                    <div className="w-full max-w-md rounded-2xl border border-[rgba(14,200,198,0.28)] bg-[#080e18] p-6 shadow-[0_24px_64px_rgba(0,0,0,0.7)]">
+                      <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.7)] uppercase mb-4">Upload Document</div>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block font-mono text-[9px] text-[rgba(255,255,255,0.4)] mb-1">TITLE</label>
+                          <input
+                            type="text"
+                            value={kbUploadTitle}
+                            onChange={e => setKbUploadTitle(e.target.value)}
+                            placeholder="Document title…"
+                            className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-mono text-[9px] text-[rgba(255,255,255,0.4)] mb-1">CATEGORY</label>
+                          <select
+                            value={kbUploadCategory}
+                            onChange={e => setKbUploadCategory(e.target.value as typeof kbUploadCategory)}
+                            className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
+                          >
+                            <option value="product-docs">Product Docs</option>
+                            <option value="brand">Brand</option>
+                            <option value="competitor-intel">Competitor Intel</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block font-mono text-[9px] text-[rgba(255,255,255,0.4)] mb-1">CONTENT</label>
+                          <textarea
+                            value={kbUploadContent}
+                            onChange={e => setKbUploadContent(e.target.value)}
+                            placeholder="Paste document content here…"
+                            rows={5}
+                            className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[11px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)] resize-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-5">
+                        <button
+                          onClick={() => { void handleKbUpload(); }}
+                          disabled={kbUploadLoading}
+                          className="flex-1 rounded-full border border-[rgba(14,200,198,0.45)] bg-[rgba(14,124,123,0.3)] py-2 font-mono text-[11px] font-bold text-[rgba(14,200,198,1)] hover:bg-[rgba(14,124,123,0.5)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          {kbUploadLoading ? 'Uploading…' : 'Upload'}
+                        </button>
+                        <button
+                          onClick={() => { setShowKbUpload(false); setKbUploadTitle(''); setKbUploadContent(''); }}
+                          className="flex-1 rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] py-2 font-mono text-[11px] text-[rgba(255,255,255,0.5)] hover:bg-[rgba(255,255,255,0.1)] transition-all"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2756,12 +2931,14 @@ export default function DashboardClient() {
                       <div className="flex gap-2">
                         <button
                           type="button"
+                          onClick={() => window.location.href = '/api/billing/plans'}
                           className="px-3 py-[5px] rounded-[20px] font-sans text-[11px] font-bold tracking-[0.5px] transition-all bg-gradient-to-br from-[rgba(201,168,76,0.6)] to-[rgba(80,55,10,0.8)] text-[rgba(255,210,100,1)] border border-[rgba(201,168,76,0.45)] shadow-[0_4px_14px_rgba(0,0,0,0.35),0_0_16px_rgba(201,168,76,0.2)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.4),0_0_28px_rgba(201,168,76,0.35)]"
                         >
                           Manage Billing
                         </button>
                         <button
                           type="button"
+                          onClick={() => toast.info('Invoice download requires Stripe billing portal integration.')}
                           className="px-3 py-[5px] rounded-[20px] font-sans text-[11px] font-bold tracking-[0.5px] transition-all bg-[rgba(255,255,255,0.05)] text-[rgba(255,255,255,0.45)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.1)] hover:text-[rgba(255,255,255,0.7)]"
                         >
                           Download Invoice
@@ -2835,43 +3012,94 @@ export default function DashboardClient() {
               </div>
             )}
 
-            {/* ── SETTINGS: TEAM ───────────────────────────────────────────── */}
             {activeTab === 'settings' && activeSettingsLever === 'team' && (
               <div>
                 <div className="flex items-center justify-between mb-3.5">
                   <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.4)] uppercase">Team Members</div>
                   <button
                     type="button"
+                    onClick={() => setShowInviteForm(v => !v)}
                     className="px-3 py-[5px] rounded-[20px] font-sans text-[11px] font-bold tracking-[0.5px] transition-all bg-gradient-to-br from-[rgba(14,124,123,0.7)] to-[rgba(0,60,60,0.8)] text-[rgba(14,200,198,1)] border border-[rgba(14,124,123,0.5)] shadow-[0_4px_14px_rgba(0,0,0,0.35),0_0_18px_rgba(14,124,123,0.25)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.4),0_0_28px_rgba(14,124,123,0.45)]"
                   >
                     + Invite Member
                   </button>
                 </div>
-                <GlassCard className="p-4">
-                  {[
-                    { initials: 'KM', name: 'Dr. Kenneth Melie PhD',  email: 'kenneth@cloudonesoftware.com', role: 'Owner · CEO/CTO', roleStyle: 'text-[rgba(255,210,100,0.85)] border-[rgba(201,168,76,0.3)] bg-[rgba(201,168,76,0.12)]', avatarStyle: { background: 'linear-gradient(135deg,rgba(201,168,76,.5),rgba(80,50,0,.8))', borderColor: 'rgba(201,168,76,0.4)' } },
-                    { initials: 'AM', name: 'Alex Martinez',           email: 'alex@cloudonesoftware.com',    role: 'Admin',          roleStyle: 'text-[rgba(14,200,198,0.8)] border-[rgba(14,124,123,0.3)] bg-[rgba(14,124,123,0.12)]', avatarStyle: { background: 'linear-gradient(135deg,rgba(14,124,123,.5),rgba(0,40,50,.8))', borderColor: 'rgba(14,124,123,0.4)' } },
-                    { initials: 'JL', name: 'Jamie Lee',               email: 'jamie@cloudonesoftware.com',   role: 'Member',         roleStyle: 'text-[rgba(255,255,255,0.5)] border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.06)]', avatarStyle: { background: 'linear-gradient(135deg,rgba(14,124,123,.4),rgba(0,30,40,.8))', borderColor: 'rgba(14,124,123,0.35)' } },
-                    { initials: 'SR', name: 'Sam Rivera',              email: 'sam@cloudonesoftware.com',     role: 'Member',         roleStyle: 'text-[rgba(255,255,255,0.5)] border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.06)]', avatarStyle: { background: 'linear-gradient(135deg,rgba(100,50,180,.4),rgba(30,10,60,.8))', borderColor: 'rgba(100,50,180,0.35)' } },
-                  ].map(({ initials, name, email, role, roleStyle, avatarStyle }, idx) => (
-                    <div key={email} className={`flex items-center justify-between py-3 ${idx > 0 ? 'border-t border-[rgba(255,255,255,0.05)]' : ''}`}>
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[12px] font-bold flex-shrink-0"
-                          style={{ border: '1.5px solid', ...avatarStyle }}
-                        >
-                          <span style={{ fontFamily: 'var(--font-display)', color: 'rgba(255,255,255,0.9)' }}>{initials}</span>
-                        </div>
-                        <div>
-                          <div className="font-sans text-[13px] font-semibold text-[rgba(255,255,255,0.85)]">{name}</div>
-                          <div className="font-mono text-[8.5px] text-[rgba(255,255,255,0.28)] mt-0.5">{email}</div>
-                        </div>
-                      </div>
-                      <span className={`px-2.5 py-[3px] rounded-[12px] border font-mono text-[8.5px] tracking-[0.5px] ${roleStyle}`}>
-                        {role}
-                      </span>
+
+                {/* Invite form (inline, shown when toggled) */}
+                {showInviteForm && (
+                  <GlassCard className="p-4 mb-3.5 border-[rgba(14,124,123,0.28)]">
+                    <div className="font-mono text-[9px] tracking-[2px] text-[rgba(14,200,198,0.6)] uppercase mb-3">Invite by Email</div>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={e => setInviteEmail(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') void handleInviteMember(); }}
+                        placeholder="colleague@company.com"
+                        className="flex-1 rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleInviteMember()}
+                        disabled={inviteLoading}
+                        className="px-4 py-2 rounded-lg border border-[rgba(14,200,198,0.45)] bg-[rgba(14,124,123,0.3)] font-mono text-[11px] font-bold text-[rgba(14,200,198,1)] hover:bg-[rgba(14,124,123,0.5)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        {inviteLoading ? 'Sending…' : 'Send'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowInviteForm(false); setInviteEmail(''); }}
+                        className="px-3 py-2 rounded-lg border border-[rgba(255,255,255,0.12)] bg-transparent font-mono text-[11px] text-[rgba(255,255,255,0.45)] hover:bg-[rgba(255,255,255,0.05)] transition-all"
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  ))}
+                  </GlassCard>
+                )}
+
+                <GlassCard className="p-4">
+                  {orgMembers.length === 0 ? (
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.3)] text-center py-6">Loading team members…</div>
+                  ) : (
+                    orgMembers.map((member, idx) => {
+                      const isOwner  = member.role === 'Owner';
+                      const isAdmin  = member.role === 'Admin';
+                      const roleStyle = isOwner
+                        ? 'text-[rgba(255,210,100,0.85)] border-[rgba(201,168,76,0.3)] bg-[rgba(201,168,76,0.12)]'
+                        : isAdmin
+                        ? 'text-[rgba(14,200,198,0.8)] border-[rgba(14,124,123,0.3)] bg-[rgba(14,124,123,0.12)]'
+                        : 'text-[rgba(255,255,255,0.5)] border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.06)]';
+                      const avatarBg = isOwner
+                        ? 'linear-gradient(135deg,rgba(201,168,76,.5),rgba(80,50,0,.8))'
+                        : isAdmin
+                        ? 'linear-gradient(135deg,rgba(14,124,123,.5),rgba(0,40,50,.8))'
+                        : 'linear-gradient(135deg,rgba(100,50,180,.4),rgba(30,10,60,.8))';
+                      const avatarBorder = isOwner
+                        ? 'rgba(201,168,76,0.4)'
+                        : isAdmin
+                        ? 'rgba(14,124,123,0.4)'
+                        : 'rgba(100,50,180,0.35)';
+                      return (
+                        <div key={member.id} className={`flex items-center justify-between py-3 ${idx > 0 ? 'border-t border-[rgba(255,255,255,0.05)]' : ''}`}>
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[12px] font-bold flex-shrink-0"
+                              style={{ border: `1.5px solid ${avatarBorder}`, background: avatarBg }}
+                            >
+                              <span style={{ fontFamily: 'var(--font-display)', color: 'rgba(255,255,255,0.9)' }}>{member.initials}</span>
+                            </div>
+                            <div>
+                              <div className="font-sans text-[13px] font-semibold text-[rgba(255,255,255,0.85)]">{member.name}</div>
+                              <div className="font-mono text-[8.5px] text-[rgba(255,255,255,0.28)] mt-0.5">{member.email}</div>
+                            </div>
+                          </div>
+                          <span className={`px-2.5 py-[3px] rounded-[12px] border font-mono text-[8.5px] tracking-[0.5px] ${roleStyle}`}>
+                            {member.role}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
                 </GlassCard>
               </div>
             )}

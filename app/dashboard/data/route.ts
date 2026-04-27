@@ -58,6 +58,31 @@ type ScheduledAgent = {
   status: 'scheduled' | 'hitl';
 };
 
+type KnowledgeDoc = {
+  id: string;
+  category: 'product-docs' | 'brand' | 'competitor-intel';
+  title: string;
+  words: string;
+  updated: string;
+  actionLabel: 'Re-train' | 'Edit';
+};
+
+type OrgMember = {
+  id: string;
+  initials: string;
+  name: string;
+  email: string;
+  role: string;
+};
+
+type UserProfile = {
+  name: string;
+  initials: string;
+  email: string;
+  tenant: string;
+  tier: string;
+};
+
 type DashboardStore = {
   testsPassedLabel: string;
   tevvScore: number;
@@ -87,6 +112,9 @@ type DashboardStore = {
     running: RunningAgent[];
     scheduled: ScheduledAgent[];
   };
+  kbDocuments: KnowledgeDoc[];
+  orgMembers: OrgMember[];
+  userProfile: UserProfile;
 };
 
 const now = () => Date.now();
@@ -208,8 +236,26 @@ const INITIAL_STORE: DashboardStore = {
       { id: '6', name: 'competitor_analyzer', schedule: 'Weekly Mon', nextRun: 'in 2d', model: 'Sonnet', estDuration: '~8m', status: 'scheduled' },
       { id: '7', name: 'ab_test_analyzer', schedule: 'Weekly Sun', nextRun: 'in 6d', model: 'Sonnet', estDuration: '~7m', status: 'scheduled' },
     ],
-  },
-};
+  },  kbDocuments: [
+    { id: '1', category: 'product-docs', title: 'Virilocity Platform Overview', words: '4,280 words', updated: 'Updated 2d ago', actionLabel: 'Re-train' },
+    { id: '2', category: 'product-docs', title: '39 Agent Capabilities Guide', words: '8,640 words', updated: 'Updated today', actionLabel: 'Re-train' },
+    { id: '3', category: 'brand', title: 'Brand Voice & Tone Guidelines', words: '2,100 words', updated: 'Updated 5d ago', actionLabel: 'Edit' },
+    { id: '4', category: 'competitor-intel', title: 'Market Landscape Analysis', words: '6,320 words', updated: 'Updated 1w ago', actionLabel: 'Re-train' },
+    { id: '5', category: 'product-docs', title: 'Pricing & Tier Comparison', words: '1,840 words', updated: 'Updated 3d ago', actionLabel: 'Re-train' },
+  ],
+  orgMembers: [
+    { id: 'mem_001', initials: 'KM', name: 'Keshav Choudhary', email: 'keshav@cloudonesoftware.com', role: 'Owner' },
+    { id: 'mem_002', initials: 'AM', name: 'Alex Martinez', email: 'alex@cloudonesoftware.com', role: 'Admin' },
+    { id: 'mem_003', initials: 'JL', name: 'Jamie Lee', email: 'jamie@cloudonesoftware.com', role: 'Member' },
+    { id: 'mem_004', initials: 'SR', name: 'Sam Rivera', email: 'sam@cloudonesoftware.com', role: 'Member' },
+  ],
+  userProfile: {
+    name: 'User',
+    initials: 'U',
+    email: '',
+    tenant: 'Workspace',
+    tier: 'free',
+  },};
 
 let store: DashboardStore = { ...INITIAL_STORE };
 
@@ -241,6 +287,22 @@ const getQueueAgeText = (queuedAt: number): string => {
   return `${diffMins} min ago`;
 };
 
+const getInitials = (name: string): string => {
+  const parts = name.trim().split(/\s+/);
+  return parts.map(p => p[0] ?? '').join('').slice(0, 2).toUpperCase() || 'U';
+};
+
+const refreshUserProfile = (session: DashboardSession) => {
+  const name = session?.user?.name ?? session?.user?.email ?? 'User';
+  store.userProfile = {
+    name,
+    initials: getInitials(name),
+    email: session?.user?.email ?? '',
+    tenant: session?.tenantId ?? session?.user?.name ?? 'Workspace',
+    tier: session?.tier ?? 'free',
+  };
+};
+
 const toResponse = () => {
   return {
     testsPassedLabel: store.testsPassedLabel,
@@ -263,6 +325,9 @@ const toResponse = () => {
       ...item,
       queuedAgo: getQueueAgeText(item.queuedAt),
     })),
+    kbDocuments: store.kbDocuments,
+    orgMembers: store.orgMembers,
+    userProfile: store.userProfile,
   };
 };
 
@@ -270,6 +335,7 @@ export async function GET() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  refreshUserProfile(session);
   return NextResponse.json(toResponse());
 }
 
@@ -277,7 +343,16 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const body = (await req.json()) as { action?: string; id?: string };
+  refreshUserProfile(session);
+
+  const body = (await req.json()) as {
+    action?: string;
+    id?: string;
+    email?: string;
+    title?: string;
+    category?: string;
+    content?: string;
+  };
 
   if (body.action === 'runAutopilot') {
     if (store.autopilot.paused) {
@@ -385,6 +460,53 @@ export async function POST(req: NextRequest) {
       ...store.feedItems,
     ].slice(0, 8);
 
+    return NextResponse.json({ ok: true, data: toResponse() });
+  }
+
+  if (body.action === 'inviteMember') {
+    const email = body.email?.trim();
+    if (!email || !email.includes('@')) {
+      return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
+    }
+    const alreadyExists = store.orgMembers.some(m => m.email === email);
+    if (alreadyExists) {
+      return NextResponse.json({ error: 'Member already exists' }, { status: 409 });
+    }
+    const localPart = email.split('@')[0] ?? email;
+    const initials = getInitials(localPart.replace(/[._-]/g, ' '));
+    const newMember: OrgMember = {
+      id: `mem_${Date.now()}`,
+      initials,
+      name: localPart,
+      email,
+      role: 'Member',
+    };
+    store.orgMembers = [...store.orgMembers, newMember];
+    store.feedItems = [
+      {
+        id: `invite_${Date.now()}`,
+        message: `**org** invited ${email} as Member`,
+        time: 'just now · team management',
+        type: 'teal' as const,
+      },
+      ...store.feedItems,
+    ].slice(0, 8);
+    return NextResponse.json({ ok: true, data: toResponse() });
+  }
+
+  if (body.action === 'uploadKbDoc') {
+    const title = body.title?.trim();
+    if (!title) return NextResponse.json({ error: 'title required' }, { status: 400 });
+    const wordCount = body.content ? body.content.trim().split(/\s+/).length : 0;
+    const newDoc: KnowledgeDoc = {
+      id: `doc_${Date.now()}`,
+      category: (body.category as KnowledgeDoc['category']) ?? 'product-docs',
+      title,
+      words: `${wordCount.toLocaleString()} words`,
+      updated: 'Updated just now',
+      actionLabel: 'Re-train',
+    };
+    store.kbDocuments = [...store.kbDocuments, newDoc];
     return NextResponse.json({ ok: true, data: toResponse() });
   }
 
