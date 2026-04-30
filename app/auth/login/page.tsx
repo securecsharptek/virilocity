@@ -116,7 +116,7 @@ export default async function LoginPage({
                 Send magic link
               </button>
             </div>
-          </form> */
+          </form> */}
         </div>
 
         <p className="text-center text-sm text-slate-500 mt-6">
