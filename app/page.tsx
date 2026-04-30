@@ -34,14 +34,14 @@ export default function LandingPage() {
         >
           {/* WCAG 2.4.6: Descriptive heading */}
           <h1 id="hero-heading" className="text-5xl font-bold mb-4 leading-tight">
-            39 AI Marketing Agents.
+            AI-Powered Marketing System.
             <br />
             <span className="text-teal">Full Autopilot.</span>
           </h1>
           <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
-            From{' '}
+            Starting at just {' '}
             <strong className="text-gold">${PRICES.starter.monthly}/month</strong>
-            {' '}— 97% cheaper than GoMega (${GOMEGA_REF.full.toLocaleString()}).
+            {' '}— up to 97% more cost-efficient than traditional solutions.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">

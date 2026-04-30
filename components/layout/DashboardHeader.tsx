@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 'use client';
 
+import Image from 'next/image';
 import { signOut } from 'next-auth/react';
 
 interface DashboardHeaderProps {
@@ -27,30 +28,26 @@ export default function DashboardHeader({
   onToggleTheme,
 }: DashboardHeaderProps) {
   return (
-    <div className="flex items-center justify-between py-4 px-0 mb-5">
+    <div className="flex items-center justify-between gap-4 py-4 px-0 mb-5">
       {/* Logo Area */}
-      <div className="flex items-center gap-3.5">
-        {/* Logo Mark */}
-        <div
-          className={`w-10 h-10 rounded-xl border flex items-center justify-center text-lg ${
+      <div className="flex items-center shrink-0">
+        <span
+          className={`relative flex items-center overflow-hidden rounded-2xl border ring-1 ${
             theme === 'dark'
-              ? 'bg-gradient-to-br from-[rgba(14,124,123,0.8)] to-[rgba(6,40,60,0.9)] border-[rgba(14,200,198,0.4)] shadow-[0_0_20px_rgba(14,124,123,0.4),inset_0_1px_0_rgba(255,255,255,0.3)]'
-              : 'bg-gradient-to-br from-[rgba(240,252,252,0.95)] to-[rgba(219,239,243,0.95)] border-[rgba(14,124,123,0.28)] shadow-[0_0_12px_rgba(14,124,123,0.16),inset_0_1px_0_rgba(255,255,255,0.85)]'
+              ? 'border-[rgba(14,200,198,0.28)] bg-[rgba(255,255,255,0.04)] shadow-[0_0_36px_rgba(14,200,198,0.16)] ring-[rgba(255,255,255,0.08)]'
+              : 'border-[rgba(14,124,123,0.2)] bg-[rgba(255,255,255,0.9)] shadow-[0_0_24px_rgba(14,124,123,0.12)] ring-[rgba(14,124,123,0.08)]'
           }`}
-          aria-hidden="true"
+          style={{ width: '340px', height: '72px' }}
         >
-          ⚡
-        </div>
-
-        {/* Logo Text */}
-        <div>
-          <div className={`font-display text-[15px] font-bold tracking-[2px] ${theme === 'dark' ? 'text-white [text-shadow:0_0_20px_rgba(14,200,198,0.4)]' : 'text-[rgba(19,42,56,0.95)]'}`}>
-            VIRILOCITY
-          </div>
-          <div className={`font-mono text-[9px] tracking-[1.5px] mt-0.5 ${theme === 'dark' ? 'text-[rgba(14,200,198,0.6)]' : 'text-[rgba(14,124,123,0.75)]'}`}>
-            V16.4 · APEX-OMNISCIENT-VERCEL
-          </div>
-        </div>
+          <Image
+            src="/assets/logos/VirilocityLogo.png"
+            alt="Virilocity"
+            fill
+            priority
+            sizes="340px"
+            className="object-cover object-center"
+          />
+        </span>
       </div>
 
       {/* Header Right */}

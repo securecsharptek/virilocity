@@ -45,7 +45,7 @@ sbom.json
 *.mdx
 *.docs.md
 
-# Temporary directories and files
+# Temporary document analysis artifacts
 .tmp/
 .tmp_*/
 .tmp_dev_guide
@@ -55,8 +55,9 @@ sbom.json
 *.tmp
 *.temp
 *.bak
+*.test.*
 
-# Temp text, archive, and XML exports
+# Temp text/archive/xml exports
 *.txt
 *.zip
 *.xml

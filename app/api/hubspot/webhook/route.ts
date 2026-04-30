@@ -10,7 +10,14 @@ export const runtime = 'nodejs'; // needs crypto
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const rawBody = await req.text();
-  const secret  = process.env['HUBSPOT_CLIENT_SECRET'] ?? '';
+  const secret  = process.env['HUBSPOT_WEBHOOK_SECRET'] ?? process.env['HUBSPOT_CLIENT_SECRET'] ?? '';
+
+  if (!secret) {
+    return NextResponse.json(
+      { error: 'Missing HUBSPOT_WEBHOOK_SECRET (or fallback HUBSPOT_CLIENT_SECRET)' },
+      { status: 500 },
+    );
+  }
 
   // TEVV F-02: verify with timestamp replay protection
   const result = verifyHubSpotWebhook(rawBody, {
