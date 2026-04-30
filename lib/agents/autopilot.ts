@@ -41,7 +41,7 @@ export interface RunAutopilotOptions {
 }
 
 // ── 11 daily autopilot tasks (Reddit excluded — HITL gate) ───────────────────
-const AUTOPILOT_TASKS: AgentType[] = [
+export const AUTOPILOT_TASKS: AgentType[] = [
   'keyword_researcher',
   'trend_detector',
   'hs_contact_enricher',

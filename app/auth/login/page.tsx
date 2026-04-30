@@ -2,6 +2,7 @@
 // Virilocity V16.4 — Login Page  ·  WCAG 2.2 compliant
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import { signIn } from '@/auth';
 
 export const metadata: Metadata = {
@@ -22,8 +23,20 @@ export default async function LoginPage({
         {/* Logo */}
         <div className="text-center mb-8">
           <a href="/" aria-label="Virilocity — return to homepage"
-            className="text-navy font-bold text-2xl">
-            <span aria-hidden="true">⚡</span> Virilocity
+            className="inline-block">
+            <span
+              className="relative flex items-center overflow-hidden rounded-2xl border border-[rgba(14,124,123,0.16)] bg-white shadow-[0_16px_40px_rgba(14,124,123,0.12)] ring-1 ring-[rgba(14,124,123,0.08)]"
+              style={{ width: '340px', height: '72px' }}
+            >
+              <Image
+                src="/assets/logos/VirilocityLogo.png"
+                alt="Virilocity"
+                fill
+                priority
+                sizes="340px"
+                className="object-cover object-center"
+              />
+            </span>
           </a>
           <h1 className="text-2xl font-bold text-navy mt-4">Welcome back</h1>
           <p className="text-slate-500 mt-1 text-sm">Sign in to your account</p>
@@ -70,17 +83,16 @@ export default async function LoginPage({
             </form>
           </div>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-6" role="separator" aria-label="or">
+          {/* Divider — email login temporarily disabled */}
+          {/* <div className="flex items-center gap-3 my-6" role="separator" aria-label="or">
             <div className="flex-1 h-px bg-mgray" aria-hidden="true" />
             <span className="text-slate-400 text-sm">or</span>
             <div className="flex-1 h-px bg-mgray" aria-hidden="true" />
-          </div>
+          </div> */}
 
-          {/* Email form */}
-          <form method="POST" action="/api/auth/signin/email" noValidate>
+          {/* Email form — temporarily disabled */}
+          {/* <form method="POST" action="/api/auth/signin/email" noValidate>
             <div className="space-y-4">
-              {/* WCAG 1.3.1: label associated to input */}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
                   Work email
@@ -90,7 +102,7 @@ export default async function LoginPage({
                   name="email"
                   type="email"
                   required
-                  autoComplete="email"           /* WCAG 1.3.5 */
+                  autoComplete="email"
                   className="input"
                   aria-describedby="email-hint"
                   placeholder="you@company.com"
@@ -104,7 +116,7 @@ export default async function LoginPage({
                 Send magic link
               </button>
             </div>
-          </form>
+          </form> */
         </div>
 
         <p className="text-center text-sm text-slate-500 mt-6">

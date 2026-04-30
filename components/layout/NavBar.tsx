@@ -5,6 +5,7 @@
 //       4.1.2 Name/Role/Value, 2.4.2 Page Titled (title in layout)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 
 const NAV_LINKS = [
   { href: '#b2c-section',  label: 'For Individuals' },
@@ -33,15 +34,27 @@ export default function NavBar() {
   return (
     // WCAG 1.3.1: <header> landmark
     <header className="sticky top-0 z-40 bg-navy border-b border-white/10" role="banner">
-      <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
 
         {/* Logo — WCAG 1.1.1: meaningful alt via aria-label */}
         <a
           href="/"
-          className="text-white font-bold text-xl tracking-tight"
+          className="shrink-0"
           aria-label="Virilocity — Go to homepage"
         >
-          <span aria-hidden="true">⚡</span>{' '}Virilocity
+          <span
+            className="relative flex items-center overflow-hidden rounded-xl border border-white/12 bg-white/5 shadow-[0_0_30px_rgba(14,200,198,0.18)] ring-1 ring-white/8"
+            style={{ width: '320px', height: '68px' }}
+          >
+            <Image
+              src="/assets/logos/VirilocityLogo.png"
+              alt="Virilocity"
+              fill
+              priority
+              sizes="320px"
+              className="object-cover object-center"
+            />
+          </span>
         </a>
 
         {/* Desktop nav — WCAG 1.3.1: <nav> landmark with aria-label */}

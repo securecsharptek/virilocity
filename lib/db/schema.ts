@@ -51,6 +51,16 @@ export const users = pgTable('users', {
   createdAt:    timestamp('created_at').defaultNow(),
 });
 
+// ── Dashboard State (tenant-scoped persisted UI state) ──────────────────────
+export const dashboardStates = pgTable('dashboard_states', {
+  tenantId:  text('tenant_id').primaryKey(),
+  state:     jsonb('state').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, t => ({
+  updatedIdx: index('dashboard_states_updated_idx').on(t.updatedAt),
+}));
+
 // ── Agent Executions ──────────────────────────────────────────────────────────
 export const agentExecutions = pgTable('agent_executions', {
   id:            text('id').primaryKey(),
@@ -169,13 +179,29 @@ export const redditThreads = pgTable('reddit_threads', {
   createdAt:            timestamp('created_at').defaultNow(),
 });
 
+// ── A/B Tests ─────────────────────────────────────────────────────────────────
+export const abTests = pgTable('ab_tests', {
+  id:         text('id').primaryKey(),
+  tenantId:   text('tenant_id').notNull().references(() => tenants.id),
+  name:       text('name').notNull(),
+  variantA:   jsonb('variant_a').$type<{ label: string; lift: number }>().notNull(),
+  variantB:   jsonb('variant_b').$type<{ label: string; lift: number }>().notNull(),
+  winner:     text('winner'),                              // 'A' | 'B' | 'none'
+  winnerLift: real('winner_lift'),
+  confidence: real('confidence').notNull().default(0),
+  status:     text('status').notNull().default('running'), // 'complete' | 'running' | 'too-early'
+  createdAt:  timestamp('created_at').defaultNow(),
+  updatedAt:  timestamp('updated_at').defaultNow(),
+}, t => ({
+  tenantIdx: index('ab_tests_tenant_idx').on(t.tenantId),
+}));
+
 // ── Migration SQL ─────────────────────────────────────────────────────────────
 export const MIGRATION_SQL = `
 -- V16.4 Multicloud Schema (Neon Postgres)
--- DB_TABLES = 17 (orgs, orgMembers, tenants, users, agentExecutions,
+-- DB_TABLES = 19 (orgs, orgMembers, tenants, users, dashboardStates, agentExecutions,
 --              webhookEvents, fairnessLogs, hsContacts, payments,
---              contentPages, kbDocuments, socialMentions, redditThreads,
---              + 4 additional: abTests, gscKeywords, videoSessions, growthbotSessions)
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+--              contentPages, kbDocuments, socialMentions, redditThreads, abTests
+--              + 3 additional: gscKeywords, videoSessions, growthbotSessions)
 CREATE EXTENSION IF NOT EXISTS "vector"; -- pgvector for KB embeddings (1536-dim)
 ` as const;

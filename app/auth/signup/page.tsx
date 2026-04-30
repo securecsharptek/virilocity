@@ -2,6 +2,7 @@
 // Virilocity V16.4 — Signup Page  ·  B2B/B2C  ·  WCAG 2.2
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import { signIn } from '@/auth';
 import { PRICES, TIER_LIMITS } from '../../../lib/types/index';
 
@@ -30,8 +31,20 @@ export default async function SignupPage({
       <div className="w-full max-w-lg">
 
         <div className="text-center mb-8">
-          <a href="/" aria-label="Virilocity — return to homepage" className="text-navy font-bold text-2xl">
-            <span aria-hidden="true">⚡</span> Virilocity
+          <a href="/" aria-label="Virilocity — return to homepage" className="inline-block">
+            <span
+              className="relative flex items-center overflow-hidden rounded-2xl border border-[rgba(14,124,123,0.16)] bg-white shadow-[0_16px_40px_rgba(14,124,123,0.12)] ring-1 ring-[rgba(14,124,123,0.08)]"
+              style={{ width: '340px', height: '72px' }}
+            >
+              <Image
+                src="/assets/logos/VirilocityLogo.png"
+                alt="Virilocity"
+                fill
+                priority
+                sizes="340px"
+                className="object-cover object-center"
+              />
+            </span>
           </a>
           <h1 className="text-2xl font-bold text-navy mt-4">
             Start your {TIER_LABELS[tier] ?? 'Free'} {isB2B ? 'team' : ''} account
@@ -81,14 +94,15 @@ export default async function SignupPage({
             </form>
           </div>
 
-          <div className="flex items-center gap-3 mb-6" role="separator" aria-label="or email signup">
+          {/* Divider — email signup temporarily disabled */}
+          {/* <div className="flex items-center gap-3 mb-6" role="separator" aria-label="or email signup">
             <div className="flex-1 h-px bg-mgray" aria-hidden="true" />
             <span className="text-slate-400 text-sm">or</span>
             <div className="flex-1 h-px bg-mgray" aria-hidden="true" />
-          </div>
+          </div> */}
 
-          {/* Email + Name form */}
-          <form method="POST" action="/api/auth/signup" noValidate>
+          {/* Email + Name form — temporarily disabled */}
+          {/* <form method="POST" action="/api/auth/signup" noValidate>
             <input type="hidden" name="tier"  value={tier} />
             <input type="hidden" name="model" value={model} />
 
@@ -126,7 +140,7 @@ export default async function SignupPage({
                 {tier === 'free' ? 'Create free account' : `Start ${TIER_LABELS[tier]} plan`}
               </button>
             </fieldset>
-          </form>
+          </form> */}
 
           <p className="text-xs text-slate-400 text-center mt-4">
             By signing up you agree to our{' '}

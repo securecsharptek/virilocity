@@ -6,7 +6,13 @@
 import type { Tenant } from '../types/index';
 
 const HS_BASE       = 'https://api.hubapi.com';
-const SCOPES        = 'crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write';
+const SCOPES        = [
+  'crm.objects.contacts.read',
+  'crm.objects.contacts.write',
+  'crm.objects.deals.read',
+  'crm.objects.deals.write',
+  'timeline',
+].join(' ');
 
 // ── OAuth2 ────────────────────────────────────────────────────────────────────
 export class HubSpotAuth {
@@ -61,6 +67,18 @@ export class HubSpotAuth {
 // ── Contacts API ──────────────────────────────────────────────────────────────
 export class HubSpotContacts {
   constructor(private readonly accessToken: string) {}
+
+  async listContacts(limit = 100): Promise<Array<{ id: string; properties?: Record<string, string | null> }>> {
+    const resp = await fetch(
+      `${HS_BASE}/crm/v3/objects/contacts?limit=${Math.max(1, Math.min(limit, 100))}&properties=email,firstname,lastname,company,lifecyclestage,hs_lead_status,hs_lead_score,hubspotscore`,
+      { headers: { Authorization: `Bearer ${this.accessToken}` } },
+    );
+    if (!resp.ok) throw new Error(`HubSpot list contacts failed: ${resp.status}`);
+    const data = await resp.json() as {
+      results?: Array<{ id: string; properties?: Record<string, string | null> }>;
+    };
+    return data.results ?? [];
+  }
 
   async getContact(id: string): Promise<Record<string, unknown>> {
     const resp = await fetch(`${HS_BASE}/crm/v3/objects/contacts/${id}?properties=email,firstname,lastname,lifecyclestage,hs_lead_status`, {

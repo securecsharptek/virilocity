@@ -9,6 +9,8 @@ import TabButton from '../../components/ui/TabButton';
 import Lever from '../../components/ui/Lever';
 import KPICard from '../../components/ui/KPICard';
 import GlassCard from '../../components/ui/GlassCard';
+import Skeleton from '../../components/ui/Skeleton';
+import IntegrationActionButton from '../../components/ui/IntegrationActionButton';
 import SectionHeader from '../../components/ui/SectionHeader';
 import ActivityFeed, { type FeedItem } from '../../components/ui/ActivityFeed';
 import ToastContainer, { useToast } from '../../components/ui/Toast';
@@ -68,18 +70,22 @@ type TaskScheduleItem = {
   agent: string;
   task: string;
   model: string;
-  status: 'scheduled' | 'hitl';
+  status: 'scheduled' | 'running' | 'success' | 'failed' | 'skipped' | 'hitl';
 };
 
 const AUTOPILOT_TASKS: TaskScheduleItem[] = [
-  { agent: 'content_strategist', task: 'Plan 7-day content', model: 'Sonnet', status: 'scheduled' },
-  { agent: 'blog_writer', task: 'Generate 2 articles', model: 'Sonnet', status: 'scheduled' },
-  { agent: 'seo_optimizer', task: 'Refresh 10 meta tags', model: 'Haiku', status: 'scheduled' },
-  { agent: 'linkedin_poster', task: 'Post 3 updates', model: 'Haiku', status: 'scheduled' },
+  { agent: 'keyword_researcher', task: 'Discover high-intent keywords', model: 'Sonnet', status: 'scheduled' },
+  { agent: 'trend_detector', task: 'Detect emerging channel trends', model: 'Haiku', status: 'scheduled' },
+  { agent: 'hs_contact_enricher', task: 'Enrich and score HubSpot contacts', model: 'Sonnet', status: 'scheduled' },
+  { agent: 'bid_optimizer', task: 'Optimize bid and spend strategy', model: 'Sonnet', status: 'scheduled' },
+  { agent: 'backlink_outreach', task: 'Process backlink outreach follow-ups', model: 'Sonnet', status: 'scheduled' },
+  { agent: 'social_listener', task: 'Monitor mentions and sentiment', model: 'Haiku', status: 'scheduled' },
+  { agent: 'ai_visibility_tracker', task: 'Track brand visibility in AI engines', model: 'Haiku', status: 'scheduled' },
+  { agent: 'churn_predictor', task: 'Score churn risk across accounts', model: 'Sonnet', status: 'scheduled' },
+  { agent: 'ab_test_orchestrator', task: 'Evaluate A/B test significance', model: 'Sonnet', status: 'scheduled' },
+  { agent: 'workspace_reporter', task: 'Compile workspace KPI report', model: 'Haiku', status: 'scheduled' },
+  { agent: 'cross_channel_orchestrator', task: 'Coordinate cross-channel actions', model: 'Sonnet', status: 'scheduled' },
   { agent: 'reddit_manager', task: 'Draft community post', model: 'Haiku', status: 'hitl' },
-  { agent: 'email_campaigner', task: 'Drip to new leads', model: 'Sonnet', status: 'scheduled' },
-  { agent: 'churn_predictor', task: 'Score all accounts', model: 'Opus', status: 'scheduled' },
-  { agent: 'lead_qualifier', task: 'Score new HS contacts', model: 'Haiku', status: 'scheduled' },
 ];
 
 type HITLQueueItem = {
@@ -165,7 +171,7 @@ type ScheduledAgent = {
   nextRun: string;
   model: string;
   estDuration: string;
-  status: 'scheduled' | 'hitl';
+  status: 'scheduled' | 'running' | 'success' | 'failed' | 'skipped' | 'hitl';
 };
 
 interface DashboardApiResponse {
@@ -209,6 +215,30 @@ interface DashboardApiResponse {
     agentsTotal: number;
     redditRequiresHumanApproval: boolean;
   };
+  analytics?: {
+    channels: AnalyticsChannel[];
+    topPages: AnalyticsTopPage[];
+    funnel: FunnelStage[];
+    revenueBreakdown: RevenueSegment[];
+    abTests: ABTest[];
+  };
+  contacts?: {
+    all: Contact[];
+    pipelineCols: PipelineCol[];
+    segments: Segment[];
+    summary: {
+      totalSynced: number;
+      pipelineValue: string;
+      activeSegments: number;
+    };
+  };
+  settings?: {
+    billingHistory: BillingHistoryItem[];
+    platformStatus: PlatformStatusItem[];
+    integrations: IntegrationItem[];
+    tevvControls: TevvControlItem[];
+    authItems: AuthItem[];
+  };
 }
 
 type OrgMember = {
@@ -235,7 +265,22 @@ const SCHEDULED_AGENTS: ScheduledAgent[] = [
   { id: '7', name: 'ab_test_analyzer', schedule: 'Weekly Sun', nextRun: 'in 6d', model: 'Sonnet', estDuration: '~7m', status: 'scheduled' },
 ];
 
-const ANALYTICS_CHANNELS = [
+type AnalyticsChannel = {
+  name: string;
+  visits: string;
+  share: number;
+  accent: 'teal' | 'gold';
+};
+
+type AnalyticsTopPage = {
+  page: string;
+  visits: string;
+  avgPosition: string;
+  ctr: string;
+  generatedBy: string;
+};
+
+const ANALYTICS_CHANNELS: AnalyticsChannel[] = [
   { name: 'Organic Search', visits: '5,840', share: 47, accent: 'teal' as const },
   { name: 'Direct', visits: '2,400', share: 20, accent: 'teal' as const },
   { name: 'LinkedIn (AI agent)', visits: '1,860', share: 15, accent: 'teal' as const },
@@ -243,7 +288,7 @@ const ANALYTICS_CHANNELS = [
   { name: 'Reddit (HITL)', visits: '980', share: 8, accent: 'gold' as const },
 ];
 
-const ANALYTICS_TOP_PAGES = [
+const ANALYTICS_TOP_PAGES: AnalyticsTopPage[] = [
   { page: '/blog/ai-marketing-agents-2026', visits: '2,140', avgPosition: '3.2', ctr: '12.8%', generatedBy: 'blog_writer' },
   { page: '/blog/saas-cac-reduction', visits: '1,820', avgPosition: '5.4', ctr: '9.4%', generatedBy: 'blog_writer' },
   { page: '/features/autopilot', visits: '1,240', avgPosition: '8.1', ctr: '6.2%', generatedBy: 'Manual' },
@@ -589,12 +634,77 @@ type Segment = {
   actionVariant: 'teal' | 'gold';
 };
 
+type BillingHistoryItem = {
+  date: string;
+  amount: string;
+  status: string;
+};
+
+type PlatformStatusItem = {
+  name: string;
+  status: string;
+};
+
+type IntegrationItem = {
+  icon: string;
+  name: string;
+  desc: string;
+  statusText: string;
+  dotColor: string;
+  textColor: string;
+};
+
+type TevvControlItem = {
+  code: string;
+  detail: string;
+};
+
+type AuthItem = {
+  name: string;
+  detail: string;
+  badge: string;
+};
+
 const SEGMENTS: Segment[] = [
   { id: '1', name: 'At-Risk Customers',    contacts: 3,  contactsAlert: true,  criteria: 'Churn score <0.3',        lastUpdated: '31m ago', action: 'Email Campaign', actionVariant: 'teal' },
   { id: '2', name: 'High-Value SQLs',      contacts: 12, contactsAlert: false, criteria: 'Score >80 & stage=SQL',   lastUpdated: '3h ago',  action: 'Email Campaign', actionVariant: 'teal' },
   { id: '3', name: 'Trial Users · Day 7',  contacts: 28, contactsAlert: false, criteria: 'Trial, joined 7d ago',    lastUpdated: 'Daily',   action: 'Drip Sequence',  actionVariant: 'teal' },
   { id: '4', name: 'Engaged MQLs',         contacts: 44, contactsAlert: false, criteria: 'Stage=MQL & 3+ visits',  lastUpdated: '6h ago',  action: 'Email Campaign', actionVariant: 'teal' },
   { id: '5', name: 'Enterprise Prospects', contacts: 8,  contactsAlert: false, criteria: 'Company size >200',       lastUpdated: '1d ago',  action: 'Sales Outreach', actionVariant: 'gold' },
+];
+
+const BILLING_HISTORY: BillingHistoryItem[] = [
+  { date: 'Apr 12, 2026', amount: '$499.00', status: 'Paid' },
+  { date: 'Mar 12, 2026', amount: '$499.00', status: 'Paid' },
+  { date: 'Feb 12, 2026', amount: '$399.00', status: 'Paid' },
+  { date: 'Jan 12, 2026', amount: '$399.00', status: 'Paid' },
+];
+
+const PLATFORM_STATUS: PlatformStatusItem[] = [
+  { name: 'Vercel Edge', status: 'Operational' },
+  { name: 'Neon Database', status: 'Operational' },
+  { name: 'Upstash Redis', status: 'Operational' },
+  { name: 'Anthropic API', status: 'Operational' },
+  { name: 'Azure Key Vault', status: 'Operational' },
+  { name: 'HubSpot CRM', status: 'Connected' },
+];
+
+// Integrations are now fetched from API in /dashboard/data
+const INTEGRATIONS: IntegrationItem[] = [];
+
+const TEVV_CONTROLS: TevvControlItem[] = [
+  { code: 'F-01: Docker USER node (non-root)', detail: 'CI gate: whoami === node' },
+  { code: 'F-02: HMAC-SHA256 Webhooks', detail: '±300s replay window · CWE-208' },
+  { code: 'F-03: RateLimiter never fails open', detail: 'Returns false on all errors' },
+  { code: 'F-04: WCAG 2.2 AA Accessibility', detail: 'axe-core CI · 0 violations' },
+];
+
+const AUTH_ITEMS: AuthItem[] = [
+  { name: 'JWT · RS256 Algorithm', detail: 'Azure Key Vault · Entra ID', badge: 'Active' },
+  { name: 'SAML SSO (Enterprise)', detail: 'Microsoft Entra ID', badge: 'Active' },
+  { name: 'Rate Limiter', detail: '60 req/min · Upstash + memory', badge: 'Active' },
+  { name: 'OWASP ASVS V3.4.1/V3.4.2', detail: 'Auth middleware compliance', badge: 'Pass' },
+  { name: 'Test Suite', detail: '503/503 PASS', badge: '100%' },
 ];
 
 export default function DashboardClient() {
@@ -625,6 +735,24 @@ export default function DashboardClient() {
   const [agentCards, setAgentCards] = useState<AgentCard[]>(AGENT_CARDS);
   const [runningAgents, setRunningAgents] = useState<RunningAgent[]>(RUNNING_AGENTS);
   const [scheduledAgents, setScheduledAgents] = useState<ScheduledAgent[]>(SCHEDULED_AGENTS);
+  const [analyticsChannels, setAnalyticsChannels] = useState<AnalyticsChannel[]>(ANALYTICS_CHANNELS);
+  const [analyticsTopPages, setAnalyticsTopPages] = useState<AnalyticsTopPage[]>(ANALYTICS_TOP_PAGES);
+  const [conversionFunnel, setConversionFunnel] = useState<FunnelStage[]>(CONVERSION_FUNNEL);
+  const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueSegment[]>(REVENUE_BREAKDOWN);
+  const [abTests, setAbTests] = useState<ABTest[]>(AB_TESTS);
+  const [contacts, setContacts] = useState<Contact[]>(CONTACTS);
+  const [pipelineCols, setPipelineCols] = useState<PipelineCol[]>(PIPELINE_COLS);
+  const [segments, setSegments] = useState<Segment[]>(SEGMENTS);
+  const [contactsSummary, setContactsSummary] = useState({
+    totalSynced: 284,
+    pipelineValue: '$142K',
+    activeSegments: 6,
+  });
+  const [billingHistory, setBillingHistory] = useState<BillingHistoryItem[]>(BILLING_HISTORY);
+  const [platformStatuses, setPlatformStatuses] = useState<PlatformStatusItem[]>(PLATFORM_STATUS);
+  const [integrations, setIntegrations] = useState<IntegrationItem[]>(INTEGRATIONS);
+  const [tevvControls, setTevvControls] = useState<TevvControlItem[]>(TEVV_CONTROLS);
+  const [authItems, setAuthItems] = useState<AuthItem[]>(AUTH_ITEMS);
   const [lastRunSummary, setLastRunSummary] = useState({
     completedTasks: 34,
     postsCreated: 58,
@@ -643,6 +771,73 @@ export default function DashboardClient() {
   const [kbUploadContent, setKbUploadContent] = useState('');
   const [showKbUpload, setShowKbUpload] = useState(false);
   const [kbUploadLoading, setKbUploadLoading] = useState(false);
+  const [editDraftItem, setEditDraftItem] = useState<HITLQueueItem | null>(null);
+  const [editDraftContent, setEditDraftContent] = useState('');
+  const [editDraftTitle, setEditDraftTitle] = useState('');
+  const [editDraftSaving, setEditDraftSaving] = useState(false);
+  const [dashboardLoadState, setDashboardLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [dashboardLoadError, setDashboardLoadError] = useState<string | null>(null);
+  const [integrationActionLoading, setIntegrationActionLoading] = useState<string | null>(null);
+  const [cmsProvider, setCmsProvider] = useState<'shopify' | 'webflow'>('shopify');
+  const [cmsTitle, setCmsTitle] = useState('');
+  const [cmsSlug, setCmsSlug] = useState('');
+  const [cmsBody, setCmsBody] = useState('');
+  const [cmsPublishLoading, setCmsPublishLoading] = useState(false);
+  
+  // Agent filter state
+  const [agentFilterStatus, setAgentFilterStatus] = useState<'all' | 'running' | 'idle' | 'hitl'>('all');
+  const [showAllAgents, setShowAllAgents] = useState(false);
+  const agentsDisplayLimit = 9;
+  
+  const nextRunUtcLabel = new Date(nextRunAt).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  });
+
+  // Compute filtered agents based on selected filter status
+  const filteredAgents = agentFilterStatus === 'all'
+    ? agentCards
+    : agentCards.filter(a => a.status === agentFilterStatus);
+  
+  const displayedAgents = showAllAgents ? filteredAgents : filteredAgents.slice(0, agentsDisplayLimit);
+  const hasMoreAgents = filteredAgents.length > agentsDisplayLimit;
+  const isAnalyticsTrafficLoading = dashboardLoadState === 'loading';
+  const isAnalyticsConversionsLoading = dashboardLoadState === 'loading';
+  const isAnalyticsAbTestsLoading = dashboardLoadState === 'loading';
+
+  const integrationActionConfig: Record<string, { label: string; href?: string; enabled: boolean }> = {
+    'HubSpot CRM': { label: 'Sync HubSpot', href: '/api/hubspot/auth', enabled: true },
+    'Microsoft 365': { label: 'Connect M365', enabled: false },
+    'Anthropic Claude API': { label: 'Connect Claude', enabled: false },
+    'Azure Key Vault': { label: 'Connect Vault', enabled: false },
+    'Neon Postgres': { label: 'Connect Neon', enabled: false },
+    'Upstash Redis': { label: 'Connect Upstash', enabled: false },
+    'Reddit API': { label: 'Connect Reddit', enabled: false },
+  };
+
+  const getIntegrationActionState = (name: string, statusText: string): { label: string; enabled: boolean; href?: string } => {
+    const cfg = integrationActionConfig[name];
+    if (!cfg) return { label: 'Connect', enabled: false };
+
+    if (name === 'HubSpot CRM' && statusText.toLowerCase().startsWith('connected')) {
+      return { label: 'Disconnect', enabled: true, href: '/api/hubspot/disconnect' };
+    }
+
+    return { label: cfg.label, enabled: cfg.enabled, href: cfg.href };
+  };
+
+  const handleIntegrationAction = (name: string, statusText: string) => {
+    const cfg = getIntegrationActionState(name, statusText);
+    if (!cfg.enabled || !cfg.href) {
+      toast.info(`${name} integration action will be enabled in next step.`);
+      return;
+    }
+
+    setIntegrationActionLoading(name);
+    window.location.assign(cfg.href);
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem('virilocity-dashboard-theme');
@@ -677,6 +872,9 @@ export default function DashboardClient() {
   const applyDashboardData = (data: DashboardApiResponse) => {
     if (isString(data.testsPassedLabel)) {
       setTestsPassedLabel(data.testsPassedLabel);
+      setAuthItems(prev => prev.map(item => (
+        item.name === 'Test Suite' ? { ...item, detail: data.testsPassedLabel } : item
+      )));
     }
 
     if (isNumber(data.tevvScore)) {
@@ -758,17 +956,83 @@ export default function DashboardClient() {
     if (data.constants?.agentsTotal) {
       setAgentsTotal(data.constants.agentsTotal);
     }
+
+    if (data.analytics && typeof data.analytics === 'object') {
+      if (Array.isArray(data.analytics.channels)) {
+        setAnalyticsChannels(data.analytics.channels);
+      }
+      if (Array.isArray(data.analytics.topPages)) {
+        setAnalyticsTopPages(data.analytics.topPages);
+      }
+      if (Array.isArray(data.analytics.funnel)) {
+        setConversionFunnel(data.analytics.funnel);
+      }
+      if (Array.isArray(data.analytics.revenueBreakdown)) {
+        setRevenueBreakdown(data.analytics.revenueBreakdown);
+      }
+      if (Array.isArray(data.analytics.abTests)) {
+        setAbTests(data.analytics.abTests);
+      }
+    }
+
+    if (data.contacts && typeof data.contacts === 'object') {
+      if (Array.isArray(data.contacts.all)) {
+        setContacts(data.contacts.all);
+      }
+      if (Array.isArray(data.contacts.pipelineCols)) {
+        setPipelineCols(data.contacts.pipelineCols);
+      }
+      if (Array.isArray(data.contacts.segments)) {
+        setSegments(data.contacts.segments);
+      }
+      if (data.contacts.summary && typeof data.contacts.summary === 'object') {
+        setContactsSummary(prev => ({
+          totalSynced: isNumber(data.contacts?.summary.totalSynced) ? data.contacts.summary.totalSynced : prev.totalSynced,
+          pipelineValue: isString(data.contacts?.summary.pipelineValue) ? data.contacts.summary.pipelineValue : prev.pipelineValue,
+          activeSegments: isNumber(data.contacts?.summary.activeSegments) ? data.contacts.summary.activeSegments : prev.activeSegments,
+        }));
+      }
+    }
+
+    if (data.settings && typeof data.settings === 'object') {
+      if (Array.isArray(data.settings.billingHistory)) {
+        setBillingHistory(data.settings.billingHistory);
+      }
+      if (Array.isArray(data.settings.platformStatus)) {
+        setPlatformStatuses(data.settings.platformStatus);
+      }
+      if (Array.isArray(data.settings.integrations)) {
+        setIntegrations(data.settings.integrations);
+      }
+      if (Array.isArray(data.settings.tevvControls)) {
+        setTevvControls(data.settings.tevvControls);
+      }
+      if (Array.isArray(data.settings.authItems)) {
+        setAuthItems(data.settings.authItems);
+      }
+    }
   };
 
   const refreshDashboardData = async (silent = true) => {
+    if (!silent) {
+      setDashboardLoadState('loading');
+      setDashboardLoadError(null);
+    }
+
     try {
       const res = await fetch('/dashboard/data', { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to load dashboard data');
       const data = (await res.json()) as DashboardApiResponse;
       applyDashboardData(data);
+      setDashboardLoadState('ready');
+      setDashboardLoadError(null);
     } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to load dashboard data';
       if (!silent) {
-        const msg = error instanceof Error ? error.message : 'Failed to load dashboard data';
+        setDashboardLoadState('error');
+        setDashboardLoadError(msg);
+      }
+      if (!silent) {
         toast.error(msg);
       }
     }
@@ -782,6 +1046,29 @@ export default function DashboardClient() {
 
     return () => window.clearInterval(poll);
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hubspot = params.get('hubspot');
+    const reason = params.get('reason');
+
+    if (!hubspot) return;
+
+    if (hubspot === 'connected') {
+      toast.success('HubSpot connected successfully.');
+    } else if (hubspot === 'disconnected') {
+      toast.info('HubSpot disconnected successfully.');
+    } else if (hubspot === 'error') {
+      const decodedReason = reason ? decodeURIComponent(reason) : 'Unknown error';
+      toast.error(`HubSpot error: ${decodedReason}`);
+    }
+
+    params.delete('hubspot');
+    params.delete('reason');
+    const next = params.toString();
+    const cleanedUrl = `${window.location.pathname}${next ? `?${next}` : ''}`;
+    window.history.replaceState({}, '', cleanedUrl);
+  }, [toast]);
 
   const postAction = async (action: string, id?: string) => {
     const res = await fetch('/dashboard/data', {
@@ -799,6 +1086,50 @@ export default function DashboardClient() {
       data?: DashboardApiResponse;
       result?: { succeeded: number; totalTasks: number };
     };
+  };
+
+  const handleCmsPublish = async () => {
+    if (!cmsTitle.trim() || !cmsSlug.trim() || !cmsBody.trim()) {
+      toast.error('Title, slug, and content are required for CMS publish.');
+      return;
+    }
+
+    setCmsPublishLoading(true);
+    try {
+      const res = await fetch('/dashboard/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'publishCms',
+          provider: cmsProvider,
+          title: cmsTitle.trim(),
+          slug: cmsSlug.trim(),
+          htmlBody: cmsBody.trim(),
+          status: 'published',
+        }),
+      });
+
+      const payload = (await res.json().catch(() => null)) as {
+        cms?: { provider?: string; itemId?: string };
+        data?: DashboardApiResponse;
+        error?: { provider?: string; code?: string; message?: string } | string;
+      } | null;
+
+      if (!res.ok) {
+        const msg = typeof payload?.error === 'string'
+          ? payload.error
+          : payload?.error?.message ?? 'CMS publish failed';
+        throw new Error(msg);
+      }
+
+      if (payload?.data) applyDashboardData(payload.data);
+      toast.success(`${cmsProvider} publish succeeded${payload?.cms?.itemId ? ` (id: ${payload.cms.itemId})` : ''}.`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'CMS publish failed';
+      toast.error(msg);
+    } finally {
+      setCmsPublishLoading(false);
+    }
   };
 
   const handleRunAutopilot = async () => {
@@ -844,12 +1175,79 @@ export default function DashboardClient() {
 
   const handleHitlAction = async (id: string, action: 'approveHitl' | 'rejectHitl') => {
     try {
+      if (action === 'approveHitl') {
+        // Call Reddit approve endpoint first — HITL invariant: human explicitly approved
+        const item = hitlQueueItems.find(i => i.id === id);
+        const redditRes = await fetch('/api/reddit/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ threadId: id, draftResponse: item?.content ?? '' }),
+        });
+        if (!redditRes.ok) {
+          const err = (await redditRes.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(err?.error ?? 'Reddit approve call failed');
+        }
+      }
       const result = await postAction(action, id);
       if (result.data) applyDashboardData(result.data);
-      toast.success(action === 'approveHitl' ? 'Item approved and queued.' : 'Item rejected and removed from queue.');
+      toast.success(action === 'approveHitl'
+        ? 'Approved. Post queued for manual Reddit submission.'
+        : 'Item rejected and removed from queue.');
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to process HITL action';
       toast.error(msg);
+    }
+  };
+
+  const handleEditDraftOpen = (item: HITLQueueItem) => {
+    setEditDraftItem(item);
+    setEditDraftTitle(item.title);
+    setEditDraftContent(item.content);
+  };
+
+  const handleEditDraftSave = async () => {
+    if (!editDraftItem) return;
+    if (!editDraftContent.trim()) {
+      toast.error('Draft content cannot be empty.');
+      return;
+    }
+    setEditDraftSaving(true);
+    try {
+      // Persist the edited draft back to the queue via the dashboard BFF
+      const res = await fetch('/dashboard/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'editHitlDraft',
+          id: editDraftItem.id,
+          title: editDraftTitle.trim(),
+          content: editDraftContent.trim(),
+        }),
+      });
+      if (res.ok) {
+        const result = (await res.json()) as { data?: DashboardApiResponse };
+        if (result.data) applyDashboardData(result.data);
+        // Also update local state immediately so UI reflects edit without re-fetch
+        setHitlQueueItems(prev => prev.map(i =>
+          i.id === editDraftItem.id
+            ? { ...i, title: editDraftTitle.trim(), content: editDraftContent.trim() }
+            : i
+        ));
+        toast.success('Draft updated.');
+      } else {
+        // Optimistic local update even if server save fails (BFF may not support this action yet)
+        setHitlQueueItems(prev => prev.map(i =>
+          i.id === editDraftItem.id
+            ? { ...i, title: editDraftTitle.trim(), content: editDraftContent.trim() }
+            : i
+        ));
+        toast.success('Draft updated locally.');
+      }
+      setEditDraftItem(null);
+    } catch {
+      toast.error('Failed to save draft.');
+    } finally {
+      setEditDraftSaving(false);
     }
   };
 
@@ -1123,6 +1521,33 @@ export default function DashboardClient() {
           {/* ── SETTINGS PLACEHOLDER — replace below with real sections ── */}
           {/* Content Area */}
           <div className="min-h-[560px] px-5 py-[22px] bg-gradient-to-b from-[rgba(0,8,20,0.58)] to-[rgba(0,4,12,0.4)]">
+            {dashboardLoadState === 'loading' && (
+              <GlassCard className="mb-4 px-4 py-3 border-[rgba(14,124,123,0.28)] bg-[rgba(14,124,123,0.08)]">
+                <div className="font-mono text-[10px] text-[rgba(14,200,198,0.82)] uppercase tracking-[2px]">
+                  Loading section data...
+                </div>
+              </GlassCard>
+            )}
+
+            {dashboardLoadState === 'error' && (
+              <GlassCard className="mb-4 px-4 py-3 border-[rgba(210,85,85,0.35)] bg-[rgba(95,20,20,0.2)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-mono text-[10px] text-[rgba(255,170,170,0.9)] uppercase tracking-[1.5px]">
+                    Failed to load dashboard data: {dashboardLoadError ?? 'unknown error'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void refreshDashboardData(false);
+                    }}
+                    className="rounded-full border border-[rgba(255,170,170,0.42)] bg-[rgba(255,255,255,0.06)] px-3 py-1 font-mono text-[9px] text-[rgba(255,210,210,0.95)] hover:bg-[rgba(255,255,255,0.12)]"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </GlassCard>
+            )}
+
             {activeTab === 'dash' && activeDashLever === 'overview' && (
               <div>
                 {/* KPI Grid */}
@@ -1159,7 +1584,7 @@ export default function DashboardClient() {
                     variant="gold"
                     valueColor="gold"
                     change="▲ +$640 this month"
-                    subtitle="Stripe · Enterprise tier"
+                    subtitle="Microsoft Marketplace · Enterprise tier"
                   />
                 </div>
 
@@ -1333,7 +1758,7 @@ export default function DashboardClient() {
                           {countdownText}
                         </div>
                         <div className="font-mono text-[11px] text-[rgba(255,255,255,0.45)] mb-6 leading-relaxed">
-                          Every 6-8 hrs · CRON: 0 */6 * * * · NEXT: 02:30 PM UTC
+                          Every 6 hrs · CRON: 0 */6 * * * · NEXT: {nextRunUtcLabel} UTC
                         </div>
                         <div className="flex justify-center gap-3">
                           <button
@@ -1376,7 +1801,7 @@ export default function DashboardClient() {
                             {lastRunSummary.postsCreated}
                           </div>
                           <div className="font-mono text-[10px] text-[rgba(255,255,255,0.45)] leading-relaxed">
-                            Posts created · Blog 34 · LinkedIn 24
+                            Posts created in last run
                           </div>
                         </div>
                         <div className="text-center p-5 rounded-xl bg-gradient-to-br from-[rgba(201,168,76,0.12)] to-[rgba(55,35,0,0.08)] border border-[rgba(201,168,76,0.32)]">
@@ -1384,7 +1809,7 @@ export default function DashboardClient() {
                             {lastRunSummary.hitlPending}
                           </div>
                           <div className="font-mono text-[10px] text-[rgba(255,255,255,0.45)] leading-relaxed">
-                            HITL pending · Reddit 2 · Email 1
+                            Awaiting human approval
                           </div>
                         </div>
                       </div>
@@ -1439,10 +1864,28 @@ export default function DashboardClient() {
                                     'inline-flex min-w-[74px] items-center justify-center rounded-full border px-2.5 py-[3px] font-mono text-[8px] leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]',
                                     item.status === 'hitl'
                                       ? 'border-[rgba(201,168,76,0.4)] bg-[rgba(201,168,76,0.14)] text-[rgba(255,210,100,0.94)] shadow-[0_0_14px_rgba(201,168,76,0.16),inset_0_1px_0_rgba(255,255,255,0.08)]'
-                                      : 'border-[rgba(100,50,180,0.38)] bg-[rgba(100,50,180,0.14)] text-[rgba(180,140,255,0.86)] shadow-[0_0_12px_rgba(100,50,180,0.14),inset_0_1px_0_rgba(255,255,255,0.08)]',
+                                      : item.status === 'running'
+                                        ? 'border-[rgba(14,200,198,0.45)] bg-[rgba(14,124,123,0.2)] text-[rgba(14,220,218,0.96)] shadow-[0_0_14px_rgba(14,124,123,0.24),inset_0_1px_0_rgba(255,255,255,0.08)]'
+                                        : item.status === 'success'
+                                          ? 'border-[rgba(30,165,80,0.42)] bg-[rgba(30,120,60,0.18)] text-[rgba(120,255,170,0.92)] shadow-[0_0_12px_rgba(30,120,60,0.2),inset_0_1px_0_rgba(255,255,255,0.08)]'
+                                          : item.status === 'failed'
+                                            ? 'border-[rgba(255,90,90,0.4)] bg-[rgba(170,40,40,0.18)] text-[rgba(255,150,150,0.92)] shadow-[0_0_12px_rgba(170,40,40,0.2),inset_0_1px_0_rgba(255,255,255,0.08)]'
+                                            : item.status === 'skipped'
+                                              ? 'border-[rgba(160,160,170,0.38)] bg-[rgba(90,90,110,0.2)] text-[rgba(220,220,230,0.88)] shadow-[0_0_10px_rgba(90,90,110,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]'
+                                              : 'border-[rgba(100,50,180,0.38)] bg-[rgba(100,50,180,0.14)] text-[rgba(180,140,255,0.86)] shadow-[0_0_12px_rgba(100,50,180,0.14),inset_0_1px_0_rgba(255,255,255,0.08)]',
                                   ].join(' ')}
                                 >
-                                  {item.status === 'hitl' ? 'HITL Gate' : 'Scheduled'}
+                                  {item.status === 'hitl'
+                                    ? 'HITL Gate'
+                                    : item.status === 'running'
+                                      ? 'Running'
+                                      : item.status === 'success'
+                                        ? 'Success'
+                                        : item.status === 'failed'
+                                          ? 'Failed'
+                                          : item.status === 'skipped'
+                                            ? 'Skipped'
+                                            : 'Scheduled'}
                                 </span>
                               </td>
                             </tr>
@@ -1514,10 +1957,10 @@ export default function DashboardClient() {
                           Approve & Post
                         </button>
                         <button
-                          onClick={() => toast.info('Draft editing flow will be connected in the next pass.')}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[rgba(255,255,255,0.045)] border-2 border-[rgba(255,255,255,0.14)] text-[rgba(255,255,255,0.52)] font-semibold text-[13px] tracking-wide hover:bg-[rgba(255,255,255,0.08)] hover:text-[rgba(255,255,255,0.78)] hover:border-[rgba(255,255,255,0.22)] transition-all"
+                          onClick={() => handleEditDraftOpen(item)}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[rgba(255,255,255,0.045)] border-2 border-[rgba(255,255,255,0.14)] text-[rgba(255,255,255,0.72)] font-semibold text-[13px] tracking-wide hover:bg-[rgba(255,255,255,0.08)] hover:text-[rgba(255,255,255,0.9)] hover:border-[rgba(255,255,255,0.28)] transition-all"
                         >
-                          <span className="text-[15px]">←</span>
+                          <span className="text-[15px]">✎</span>
                           Edit Draft
                         </button>
                         <button
@@ -1553,6 +1996,90 @@ export default function DashboardClient() {
               </div>
             )}
 
+            {/* ── EDIT DRAFT MODAL ─────────────────────────────────────── */}
+            {editDraftItem && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.72)] backdrop-blur-sm"
+                onClick={(e) => { if (e.target === e.currentTarget) setEditDraftItem(null); }}
+              >
+                <div className="relative w-full max-w-2xl mx-4 rounded-2xl border border-[rgba(201,168,76,0.35)] bg-[rgba(14,18,26,0.97)] shadow-[0_24px_80px_rgba(0,0,0,0.7),0_0_60px_rgba(201,168,76,0.12)] p-6">
+                  {/* Modal Header */}
+                  <div className="flex items-start justify-between mb-5">
+                    <div>
+                      <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,210,100,0.7)] uppercase mb-1">
+                        ✎ Edit Draft · HITL Gate
+                      </div>
+                      <div className="font-[Rajdhani] text-[16px] font-bold text-[rgba(255,255,255,0.9)]">
+                        {editDraftItem.subreddit}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setEditDraftItem(null)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.5)] hover:text-[rgba(255,255,255,0.9)] hover:bg-[rgba(255,255,255,0.1)] transition-all font-bold text-[14px]"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Title Field */}
+                  <div className="mb-4">
+                    <label className="block font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.4)] uppercase mb-1.5">
+                      Post Title
+                    </label>
+                    <input
+                      type="text"
+                      value={editDraftTitle}
+                      onChange={(e) => setEditDraftTitle(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-[rgba(0,0,0,0.45)] border border-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.88)] font-[Rajdhani] text-[14px] focus:outline-none focus:border-[rgba(201,168,76,0.55)] focus:shadow-[0_0_0_3px_rgba(201,168,76,0.12)] transition-all"
+                      placeholder="Post title..."
+                    />
+                  </div>
+
+                  {/* Content Field */}
+                  <div className="mb-5">
+                    <label className="block font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.4)] uppercase mb-1.5">
+                      Draft Content
+                    </label>
+                    <textarea
+                      value={editDraftContent}
+                      onChange={(e) => setEditDraftContent(e.target.value)}
+                      rows={7}
+                      className="w-full px-3.5 py-3 rounded-lg bg-[rgba(0,0,0,0.45)] border border-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.82)] font-[Rajdhani] text-[13.5px] leading-relaxed resize-none focus:outline-none focus:border-[rgba(201,168,76,0.55)] focus:shadow-[0_0_0_3px_rgba(201,168,76,0.12)] transition-all"
+                      placeholder="Edit the post draft..."
+                    />
+                    <div className="mt-1 text-right font-mono text-[9px] text-[rgba(255,255,255,0.28)]">
+                      {editDraftContent.length} chars
+                    </div>
+                  </div>
+
+                  {/* HITL reminder */}
+                  <div className="mb-5 px-3.5 py-2.5 rounded-lg bg-[rgba(201,168,76,0.08)] border border-[rgba(201,168,76,0.22)] flex items-center gap-2.5">
+                    <span className="text-[rgba(255,210,100,0.9)] text-[13px]">⚠</span>
+                    <span className="font-mono text-[9px] text-[rgba(255,210,100,0.72)] tracking-wide">
+                      inv-001 · Saving returns draft to queue. Post still requires Approve & Post to go live.
+                    </span>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setEditDraftItem(null)}
+                      className="flex-1 px-4 py-2.5 rounded-lg bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.52)] font-semibold text-[13px] tracking-wide hover:bg-[rgba(255,255,255,0.08)] transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => { void handleEditDraftSave(); }}
+                      disabled={editDraftSaving}
+                      className="flex-2 px-6 py-2.5 rounded-lg bg-gradient-to-br from-[rgba(201,168,76,0.55)] to-[rgba(150,110,20,0.65)] border-2 border-[rgba(201,168,76,0.55)] text-[rgba(255,240,180,1)] font-bold text-[13px] tracking-wide shadow-[0_4px_14px_rgba(0,0,0,0.4),0_0_22px_rgba(201,168,76,0.22)] hover:shadow-[0_5px_20px_rgba(0,0,0,0.45),0_0_32px_rgba(201,168,76,0.35)] disabled:opacity-50 transition-all"
+                    >
+                      {editDraftSaving ? 'Saving…' : '✓ Save Draft'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* AGENTS TAB CONTENT - Updated */}
             {activeTab === 'agents' && activeAgentsLever === 'all' && (
               <div>
@@ -1562,13 +2089,40 @@ export default function DashboardClient() {
                     All Agents
                   </div>
                   <div className="flex gap-2.5">
-                    <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors">
+                    <button 
+                      onClick={() => { setAgentFilterStatus('all'); setShowAllAgents(false); }}
+                      className={`rounded-full border px-3 py-1.5 font-mono text-[9px] shadow-[0_0_12px_rgba(0,0,0,0.15)] transition-colors ${
+                        agentFilterStatus === 'all'
+                          ? 'border-[rgba(255,255,255,0.35)] bg-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.92)]'
+                          : 'border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.05)] text-[rgba(255,255,255,0.52)] hover:bg-[rgba(255,255,255,0.08)]'
+                      }`}>
+                      {agentCards.length} All
+                    </button>
+                    <button 
+                      onClick={() => { setAgentFilterStatus('running'); setShowAllAgents(false); }}
+                      className={`rounded-full border px-3 py-1.5 font-mono text-[9px] shadow-[0_0_18px_rgba(14,124,123,0.15)] transition-colors ${
+                        agentFilterStatus === 'running'
+                          ? 'border-[rgba(14,124,123,0.55)] bg-[rgba(14,124,123,0.25)] text-[rgba(14,200,198,0.95)]'
+                          : 'border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] text-[rgba(14,200,198,0.92)] hover:bg-[rgba(14,124,123,0.18)]'
+                      }`}>
                       {agentCards.filter(a => a.status === 'running').length} Running
                     </button>
-                    <button className="rounded-full border border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(255,210,100,0.92)] shadow-[0_0_18px_rgba(201,168,76,0.15)] hover:bg-[rgba(201,168,76,0.18)] transition-colors">
+                    <button 
+                      onClick={() => { setAgentFilterStatus('hitl'); setShowAllAgents(false); }}
+                      className={`rounded-full border px-3 py-1.5 font-mono text-[9px] shadow-[0_0_18px_rgba(201,168,76,0.15)] transition-colors ${
+                        agentFilterStatus === 'hitl'
+                          ? 'border-[rgba(201,168,76,0.55)] bg-[rgba(201,168,76,0.25)] text-[rgba(255,210,100,0.95)]'
+                          : 'border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.12)] text-[rgba(255,210,100,0.92)] hover:bg-[rgba(201,168,76,0.18)]'
+                      }`}>
                       {agentCards.filter(a => a.status === 'hitl').length} HITL Gated
                     </button>
-                    <button className="rounded-full border border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.05)] px-3 py-1.5 font-mono text-[9px] text-[rgba(255,255,255,0.52)] shadow-[0_0_12px_rgba(0,0,0,0.15)] hover:bg-[rgba(255,255,255,0.08)] transition-colors">
+                    <button 
+                      onClick={() => { setAgentFilterStatus('idle'); setShowAllAgents(false); }}
+                      className={`rounded-full border px-3 py-1.5 font-mono text-[9px] shadow-[0_0_12px_rgba(0,0,0,0.15)] transition-colors ${
+                        agentFilterStatus === 'idle'
+                          ? 'border-[rgba(255,255,255,0.35)] bg-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.92)]'
+                          : 'border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.05)] text-[rgba(255,255,255,0.52)] hover:bg-[rgba(255,255,255,0.08)]'
+                      }`}>
                       {agentCards.filter(a => a.status === 'idle').length} Idle
                     </button>
                   </div>
@@ -1576,7 +2130,7 @@ export default function DashboardClient() {
 
                 {/* Agent Cards Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                  {agentCards.map((agent) => (
+                  {displayedAgents.map((agent) => (
                     <GlassCard key={agent.id} className="p-5 border-[rgba(255,255,255,0.08)]">
                       {/* Agent Header */}
                       <div className="mb-4 flex items-start justify-between">
@@ -1642,8 +2196,39 @@ export default function DashboardClient() {
 
                 {/* Showing Info */}
                 <div className="mb-4 text-center">
-                  <div className="font-mono text-[10px] text-[rgba(255,255,255,0.3)]">
-                    Showing {agentCards.length} of {agentsTotal} agents · <span className="text-[rgba(14,200,198,0.7)] cursor-pointer hover:text-[rgba(14,200,198,0.9)]">View all →</span>
+                  <div className="font-mono text-[10px] text-[rgba(255,255,255,0.3)] flex items-center justify-center gap-1">
+                    {agentFilterStatus === 'all' && (
+                      <>
+                        <span>Showing {displayedAgents.length} of {filteredAgents.length} agents</span>
+                        {hasMoreAgents && (
+                          <>
+                            <span>·</span>
+                            <button 
+                              onClick={() => setShowAllAgents(!showAllAgents)}
+                              className="px-2 py-1 rounded bg-[rgba(14,200,198,0.15)] text-[rgba(14,200,198,0.9)] hover:bg-[rgba(14,200,198,0.25)] hover:text-[rgba(14,200,198,0.95)] transition-all font-semibold text-[9px] border border-[rgba(14,200,198,0.3)] hover:border-[rgba(14,200,198,0.5)]"
+                            >
+                              {showAllAgents ? '← Show Less' : 'View all →'}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
+                    {agentFilterStatus !== 'all' && (
+                      <>
+                        <span>Showing {displayedAgents.length} {agentFilterStatus} agent{displayedAgents.length !== 1 ? 's' : ''}</span>
+                        {hasMoreAgents && (
+                          <>
+                            <span>·</span>
+                            <button 
+                              onClick={() => setShowAllAgents(!showAllAgents)}
+                              className="px-2 py-1 rounded bg-[rgba(14,200,198,0.15)] text-[rgba(14,200,198,0.9)] hover:bg-[rgba(14,200,198,0.25)] hover:text-[rgba(14,200,198,0.95)] transition-all font-semibold text-[9px] border border-[rgba(14,200,198,0.3)] hover:border-[rgba(14,200,198,0.5)]"
+                            >
+                              {showAllAgents ? '← Show Less' : 'View all →'}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1679,9 +2264,22 @@ export default function DashboardClient() {
                   </div>
                 </div>
 
-                {/* Running Agents List */}
-                <div className="space-y-3 mb-6">
-                  {runningAgents.map((agent) => (
+                {/* Empty State or Running Agents List */}
+                {runningAgents.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 px-8">
+                    <div className="text-5xl mb-4">⏸</div>
+                    <div className="font-mono text-[13px] font-semibold text-[rgba(255,255,255,0.48)] text-center mb-2">
+                      No Agents Running
+                    </div>
+                    <div className="font-mono text-[11px] text-[rgba(255,255,255,0.34)] text-center max-w-md">
+                      Autopilot is idle. Click "Run Autopilot" in the Autopilot tab to start the 11-task orchestration pipeline.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Running Agents List */}
+                    <div className="space-y-3 mb-6">
+                      {runningAgents.map((agent) => (
                     <GlassCard key={agent.id} className="px-5 py-4 border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]">
                       <div className="flex items-center gap-5">
                         {/* Circular Progress Indicator */}
@@ -1756,6 +2354,8 @@ export default function DashboardClient() {
                     <span className="text-[rgba(255,210,100,0.85)]">▲ {hitlQueueItems.length}</span> HITL pending
                   </div>
                 </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -1769,7 +2369,7 @@ export default function DashboardClient() {
                   </div>
                   <div className="flex gap-2.5">
                     <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors">
-                      Next: 02:00 UTC
+                      Next: {nextRunUtcLabel} UTC
                     </button>
                   </div>
                 </div>
@@ -1836,15 +2436,34 @@ export default function DashboardClient() {
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            {agent.status === 'scheduled' ? (
-                              <button className="rounded-full border border-[rgba(100,50,180,0.35)] bg-[rgba(100,50,180,0.14)] px-3 py-1.5 font-mono text-[9px] font-medium text-[rgba(180,140,255,0.92)] shadow-[0_0_14px_rgba(100,50,180,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(100,50,180,0.2)] transition-colors">
-                                Scheduled
-                              </button>
-                            ) : (
-                              <button className="rounded-full border border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.14)] px-3 py-1.5 font-mono text-[9px] font-medium text-[rgba(255,210,100,0.92)] shadow-[0_0_14px_rgba(201,168,76,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(201,168,76,0.2)] transition-colors">
-                                HITL Gate
-                              </button>
-                            )}
+                            <button
+                              className={[
+                                'rounded-full border px-3 py-1.5 font-mono text-[9px] font-medium transition-colors',
+                                agent.status === 'hitl'
+                                  ? 'border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.14)] text-[rgba(255,210,100,0.92)] shadow-[0_0_14px_rgba(201,168,76,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(201,168,76,0.2)]'
+                                  : agent.status === 'running'
+                                    ? 'border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.16)] text-[rgba(14,200,198,0.95)] shadow-[0_0_14px_rgba(14,124,123,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(14,124,123,0.22)]'
+                                    : agent.status === 'success'
+                                      ? 'border-[rgba(30,165,80,0.38)] bg-[rgba(30,120,60,0.16)] text-[rgba(120,255,170,0.92)] shadow-[0_0_14px_rgba(30,120,60,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(30,120,60,0.22)]'
+                                      : agent.status === 'failed'
+                                        ? 'border-[rgba(255,90,90,0.35)] bg-[rgba(170,40,40,0.16)] text-[rgba(255,160,160,0.92)] shadow-[0_0_14px_rgba(170,40,40,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(170,40,40,0.22)]'
+                                        : agent.status === 'skipped'
+                                          ? 'border-[rgba(160,160,170,0.35)] bg-[rgba(90,90,110,0.18)] text-[rgba(220,220,230,0.88)] shadow-[0_0_14px_rgba(90,90,110,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(90,90,110,0.24)]'
+                                          : 'border-[rgba(100,50,180,0.35)] bg-[rgba(100,50,180,0.14)] text-[rgba(180,140,255,0.92)] shadow-[0_0_14px_rgba(100,50,180,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(100,50,180,0.2)]',
+                              ].join(' ')}
+                            >
+                              {agent.status === 'hitl'
+                                ? 'HITL Gate'
+                                : agent.status === 'running'
+                                  ? 'Running'
+                                  : agent.status === 'success'
+                                    ? 'Success'
+                                    : agent.status === 'failed'
+                                      ? 'Failed'
+                                      : agent.status === 'skipped'
+                                        ? 'Skipped'
+                                        : 'Scheduled'}
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1871,6 +2490,14 @@ export default function DashboardClient() {
 
             {activeTab === 'analytics' && activeAnalyticsLever === 'traffic' && (
               <div>
+                {!isAnalyticsTrafficLoading && (analyticsChannels.length === 0 || analyticsTopPages.length === 0) ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      Analytics data is currently unavailable for this section.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-4 mb-4">
                   <GlassCard className="px-5 py-4 border-[rgba(14,124,123,0.32)] bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]">
                     <div className="flex items-center justify-between mb-2.5">
@@ -1883,43 +2510,63 @@ export default function DashboardClient() {
                     </div>
 
                     <div className="h-[112px]">
-                      <svg viewBox="0 0 760 120" className="w-full h-full">
-                        <defs>
-                          <linearGradient id="analyticsTrafficFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="rgba(14,200,198,0.24)" />
-                            <stop offset="100%" stopColor="rgba(14,124,123,0)" />
-                          </linearGradient>
-                        </defs>
-                        <line x1="0" y1="88" x2="760" y2="88" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-                        <path
-                          d="M18 74 L102 56 L148 59 L210 45 L278 51 L336 38 L392 36 L448 30 L522 28 L584 24 L646 21 L742 18 L742 112 L18 112 Z"
-                          fill="url(#analyticsTrafficFill)"
-                        />
-                        <path
-                          d="M18 74 L102 56 L148 59 L210 45 L278 51 L336 38 L392 36 L448 30 L522 28 L584 24 L646 21 L742 18"
-                          fill="none"
-                          stroke="rgba(14,200,198,0.92)"
-                          strokeWidth="2.8"
-                          strokeLinecap="round"
-                        />
-                      </svg>
+                      {isAnalyticsTrafficLoading ? (
+                        <Skeleton className="h-full w-full rounded-lg" />
+                      ) : (
+                        <svg viewBox="0 0 760 120" className="w-full h-full">
+                          <defs>
+                            <linearGradient id="analyticsTrafficFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="rgba(14,200,198,0.24)" />
+                              <stop offset="100%" stopColor="rgba(14,124,123,0)" />
+                            </linearGradient>
+                          </defs>
+                          <line x1="0" y1="88" x2="760" y2="88" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                          <path
+                            d="M18 74 L102 56 L148 59 L210 45 L278 51 L336 38 L392 36 L448 30 L522 28 L584 24 L646 21 L742 18 L742 112 L18 112 Z"
+                            fill="url(#analyticsTrafficFill)"
+                          />
+                          <path
+                            d="M18 74 L102 56 L148 59 L210 45 L278 51 L336 38 L392 36 L448 30 L522 28 L584 24 L646 21 L742 18"
+                            fill="none"
+                            stroke="rgba(14,200,198,0.92)"
+                            strokeWidth="2.8"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-4 gap-2 mt-2 pt-2 border-t border-[rgba(255,255,255,0.05)]">
                       <div>
-                        <div className="font-display text-[29px] leading-none text-[rgba(14,200,198,0.95)]">12.4K</div>
+                        {isAnalyticsTrafficLoading ? (
+                          <Skeleton className="h-8 w-16" />
+                        ) : (
+                          <div className="font-display text-[29px] leading-none text-[rgba(14,200,198,0.95)]">12.4K</div>
+                        )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Visitors</div>
                       </div>
                       <div>
-                        <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">3.2</div>
+                        {isAnalyticsTrafficLoading ? (
+                          <Skeleton className="h-8 w-12" />
+                        ) : (
+                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">3.2</div>
+                        )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Pages/Session</div>
                       </div>
                       <div>
-                        <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">2m 45s</div>
+                        {isAnalyticsTrafficLoading ? (
+                          <Skeleton className="h-8 w-16" />
+                        ) : (
+                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">2m 45s</div>
+                        )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Avg Duration</div>
                       </div>
                       <div>
-                        <div className="font-display text-[29px] leading-none text-[rgba(30,165,80,0.9)]">38%</div>
+                        {isAnalyticsTrafficLoading ? (
+                          <Skeleton className="h-8 w-14" />
+                        ) : (
+                          <div className="font-display text-[29px] leading-none text-[rgba(30,165,80,0.9)]">38%</div>
+                        )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Bounce Rate</div>
                       </div>
                     </div>
@@ -1931,23 +2578,35 @@ export default function DashboardClient() {
                     </div>
 
                     <div className="space-y-3.5">
-                      {ANALYTICS_CHANNELS.map((channel) => (
-                        <div key={channel.name}>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <div className="font-mono text-[10px] text-[rgba(255,255,255,0.62)]">{channel.name}</div>
-                            <div className="font-mono text-[10px] text-[rgba(255,255,255,0.56)]">
-                              <span className="text-[rgba(14,200,198,0.86)]">{channel.visits}</span>
-                              <span className="ml-2">{channel.share}%</span>
+                      {isAnalyticsTrafficLoading ? (
+                        Array.from({ length: 5 }).map((_, index) => (
+                          <div key={`analytics-channel-skeleton-${index}`}>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <Skeleton className="h-3 w-36" />
+                              <Skeleton className="h-3 w-20" />
+                            </div>
+                            <Skeleton className="h-2 w-full rounded-full" />
+                          </div>
+                        ))
+                      ) : (
+                        analyticsChannels.map((channel) => (
+                          <div key={channel.name}>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <div className="font-mono text-[10px] text-[rgba(255,255,255,0.62)]">{channel.name}</div>
+                              <div className="font-mono text-[10px] text-[rgba(255,255,255,0.56)]">
+                                <span className="text-[rgba(14,200,198,0.86)]">{channel.visits}</span>
+                                <span className="ml-2">{channel.share}%</span>
+                              </div>
+                            </div>
+                            <div className="h-2 rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
+                              <div
+                                className={channel.accent === 'gold' ? 'h-full bg-[rgba(201,168,76,0.9)]' : 'h-full bg-[rgba(14,200,198,0.85)]'}
+                                style={{ width: `${channel.share}%` }}
+                              />
                             </div>
                           </div>
-                          <div className="h-2 rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
-                            <div
-                              className={channel.accent === 'gold' ? 'h-full bg-[rgba(201,168,76,0.9)]' : 'h-full bg-[rgba(14,200,198,0.85)]'}
-                              style={{ width: `${channel.share}%` }}
-                            />
-                          </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   </GlassCard>
                 </div>
@@ -1974,15 +2633,27 @@ export default function DashboardClient() {
                         </tr>
                       </thead>
                       <tbody>
-                        {ANALYTICS_TOP_PAGES.map((row) => (
-                          <tr key={row.page} className="border-b border-[rgba(255,255,255,0.05)]">
-                            <td className="py-2.5 pr-3 font-[Rajdhani] text-[13px] font-semibold text-[rgba(235,245,255,0.9)]">{row.page}</td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.visits}</td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.avgPosition}</td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.ctr}</td>
-                            <td className="py-2.5 pl-3 font-mono text-[11px] text-[rgba(14,200,198,0.82)]">{row.generatedBy}</td>
-                          </tr>
-                        ))}
+                        {isAnalyticsTrafficLoading ? (
+                          Array.from({ length: 5 }).map((_, index) => (
+                            <tr key={`analytics-top-pages-skeleton-${index}`} className="border-b border-[rgba(255,255,255,0.05)]">
+                              <td className="py-2.5 pr-3"><Skeleton className="h-4 w-64" /></td>
+                              <td className="py-2.5 px-3"><Skeleton className="h-4 w-14" /></td>
+                              <td className="py-2.5 px-3"><Skeleton className="h-4 w-12" /></td>
+                              <td className="py-2.5 px-3"><Skeleton className="h-4 w-10" /></td>
+                              <td className="py-2.5 pl-3"><Skeleton className="h-4 w-24" /></td>
+                            </tr>
+                          ))
+                        ) : (
+                          analyticsTopPages.map((row) => (
+                            <tr key={row.page} className="border-b border-[rgba(255,255,255,0.05)]">
+                              <td className="py-2.5 pr-3 font-[Rajdhani] text-[13px] font-semibold text-[rgba(235,245,255,0.9)]">{row.page}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.visits}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.avgPosition}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.ctr}</td>
+                              <td className="py-2.5 pl-3 font-mono text-[11px] text-[rgba(14,200,198,0.82)]">{row.generatedBy}</td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1992,6 +2663,14 @@ export default function DashboardClient() {
 
             {activeTab === 'analytics' && activeAnalyticsLever === 'conversions' && (
               <div>
+                {!isAnalyticsConversionsLoading && (conversionFunnel.length === 0 || revenueBreakdown.length === 0) ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      Conversion metrics are not available yet.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 {/* Conversion Funnel & Revenue Breakdown Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.2fr] gap-5 mb-6">
                   {/* Conversion Funnel */}
@@ -2006,28 +2685,48 @@ export default function DashboardClient() {
                     </div>
 
                     <div className="space-y-3.5">
-                      {CONVERSION_FUNNEL.map((stage, idx) => (
+                      {(isAnalyticsConversionsLoading
+                        ? Array.from({ length: 4 }).map((_, idx) => ({
+                            label: `stage-${idx}`,
+                            count: 0,
+                            percentage: 0,
+                            dropoff: idx < 3 ? 0 : undefined,
+                          }))
+                        : conversionFunnel
+                      ).map((stage, idx) => (
                         <div key={stage.label}>
                           {/* Funnel box */}
                           <div className="rounded-lg border-2 border-[rgba(14,124,123,0.5)] bg-gradient-to-r from-[rgba(14,124,123,0.25)] to-[rgba(14,124,123,0.12)] px-4 py-3.5 flex items-center justify-between group hover:border-[rgba(14,200,198,0.7)] transition-all">
                             <div className="flex-1">
-                              <div className="font-mono text-[11px] text-[rgba(255,255,255,0.7)] font-semibold">
-                                {stage.label}
-                              </div>
+                              {isAnalyticsConversionsLoading ? (
+                                <Skeleton className="h-4 w-28" />
+                              ) : (
+                                <div className="font-mono text-[11px] text-[rgba(255,255,255,0.7)] font-semibold">
+                                  {stage.label}
+                                </div>
+                              )}
                             </div>
                             <div className="text-right">
-                              <div className="font-display text-[28px] leading-none font-bold text-[rgba(14,200,198,0.95)]">
-                                {stage.count.toLocaleString()}
-                              </div>
+                              {isAnalyticsConversionsLoading ? (
+                                <Skeleton className="h-8 w-20" />
+                              ) : (
+                                <div className="font-display text-[28px] leading-none font-bold text-[rgba(14,200,198,0.95)]">
+                                  {stage.count.toLocaleString()}
+                                </div>
+                              )}
                             </div>
                           </div>
 
                           {/* Conversion indicator - shown below each box except the last */}
-                          {stage.dropoff && idx < CONVERSION_FUNNEL.length - 1 && (
+                          {((isAnalyticsConversionsLoading && idx < 3) || (!isAnalyticsConversionsLoading && stage.dropoff && idx < conversionFunnel.length - 1)) && (
                             <div className="px-4 py-1.5 text-center">
-                              <div className="font-mono text-[8.5px] text-[rgba(255,150,150,0.75)] tracking-wider">
-                                ↓ {stage.dropoff}% dropoff
-                              </div>
+                              {isAnalyticsConversionsLoading ? (
+                                <Skeleton className="mx-auto h-3 w-24" />
+                              ) : (
+                                <div className="font-mono text-[8.5px] text-[rgba(255,150,150,0.75)] tracking-wider">
+                                  ↓ {stage.dropoff}% dropoff
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -2038,17 +2737,25 @@ export default function DashboardClient() {
                     <div className="mt-6 pt-5 border-t border-[rgba(255,255,255,0.08)]">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="text-center">
-                          <div className="font-display text-[24px] leading-none font-bold text-[rgba(14,200,198,0.92)] mb-1">
-                            0.71%
-                          </div>
+                          {isAnalyticsConversionsLoading ? (
+                            <Skeleton className="mx-auto mb-1 h-7 w-16" />
+                          ) : (
+                            <div className="font-display text-[24px] leading-none font-bold text-[rgba(14,200,198,0.92)] mb-1">
+                              0.71%
+                            </div>
+                          )}
                           <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] tracking-tight">
                             Overall Conv. Rate
                           </div>
                         </div>
                         <div className="text-center">
-                          <div className="font-display text-[24px] leading-none font-bold text-[rgba(30,165,80,0.85)] mb-1">
-                            31%
-                          </div>
+                          {isAnalyticsConversionsLoading ? (
+                            <Skeleton className="mx-auto mb-1 h-7 w-12" />
+                          ) : (
+                            <div className="font-display text-[24px] leading-none font-bold text-[rgba(30,165,80,0.85)] mb-1">
+                              31%
+                            </div>
+                          )}
                           <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] tracking-tight">
                             Trial to Paid
                           </div>
@@ -2064,31 +2771,53 @@ export default function DashboardClient() {
                     </div>
 
                     <div className="space-y-4 mb-6">
-                      {REVENUE_BREAKDOWN.map((segment) => (
+                      {(isAnalyticsConversionsLoading
+                        ? Array.from({ length: 3 }).map((_, idx) => ({
+                            tier: `tier-${idx}`,
+                            revenue: 0,
+                            percentage: 0,
+                            color: 'rgba(255,255,255,0.2)',
+                          }))
+                        : revenueBreakdown
+                      ).map((segment) => (
                         <div key={segment.tier} className="space-y-1.5">
                           <div className="flex items-end justify-between">
-                            <div className="font-mono text-[11px] text-[rgba(255,255,255,0.68)] font-medium">
-                              {segment.tier}
-                            </div>
+                            {isAnalyticsConversionsLoading ? (
+                              <Skeleton className="h-4 w-20" />
+                            ) : (
+                              <div className="font-mono text-[11px] text-[rgba(255,255,255,0.68)] font-medium">
+                                {segment.tier}
+                              </div>
+                            )}
                             <div className="flex items-baseline gap-2">
-                              <div className="font-display text-[19px] leading-none font-bold text-[rgba(255,255,255,0.88)]">
-                                ${segment.revenue.toLocaleString()}
-                              </div>
-                              <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)]">
-                                {segment.percentage}%
-                              </div>
+                              {isAnalyticsConversionsLoading ? (
+                                <Skeleton className="h-5 w-24" />
+                              ) : (
+                                <>
+                                  <div className="font-display text-[19px] leading-none font-bold text-[rgba(255,255,255,0.88)]">
+                                    ${segment.revenue.toLocaleString()}
+                                  </div>
+                                  <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)]">
+                                    {segment.percentage}%
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
 
                           {/* Revenue bar */}
                           <div className="h-[10px] rounded-full bg-[rgba(0,0,0,0.4)] border border-[rgba(255,255,255,0.08)] overflow-hidden">
-                            <div
-                              className="h-full transition-all duration-500 rounded-full"
-                              style={{
-                                width: `${segment.percentage}%`,
-                                backgroundColor: segment.color,
-                              }}
-                            />
+                            {isAnalyticsConversionsLoading ? (
+                              <Skeleton className="h-full w-full rounded-none" />
+                            ) : (
+                              <div
+                                className="h-full transition-all duration-500 rounded-full"
+                                style={{
+                                  width: `${segment.percentage}%`,
+                                  backgroundColor: segment.color,
+                                }}
+                              />
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2165,14 +2894,26 @@ export default function DashboardClient() {
 
             {activeTab === 'analytics' && activeAnalyticsLever === 'ab-tests' && (
               <div>
+                {!isAnalyticsAbTestsLoading && abTests.length === 0 ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      No A/B tests are available for this workspace yet.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 {/* A/B Tests Header */}
                 <div className="mb-5 flex items-center justify-between">
                   <div className="font-mono text-[10px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase">
                     A/B Tests
                   </div>
-                  <div className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)]">
-                    {AB_TESTS.length} Active Tests
-                  </div>
+                  {isAnalyticsAbTestsLoading ? (
+                    <Skeleton className="h-7 w-24 rounded-full" />
+                  ) : (
+                    <div className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)]">
+                      {abTests.length} Active Tests
+                    </div>
+                  )}
                 </div>
 
                 {/* A/B Tests Table */}
@@ -2190,17 +2931,29 @@ export default function DashboardClient() {
                         </tr>
                       </thead>
                       <tbody>
-                        {AB_TESTS.map((test) => (
+                        {(isAnalyticsAbTestsLoading
+                          ? Array.from({ length: 4 }).map((_, idx) => ({
+                              id: `skeleton-test-${idx}`,
+                              name: '',
+                              variantA: { label: '', lift: 0 },
+                              variantB: { label: '', lift: 0 },
+                              winner: undefined,
+                              winnerLift: undefined,
+                              confidence: 0,
+                              status: 'running' as const,
+                            }))
+                          : abTests
+                        ).map((test) => (
                           <tr key={test.id} className="border-b border-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.03)] transition-colors">
                             {/* Test Name */}
                             <td className="py-3.5 pr-4 font-[Rajdhani] text-[12px] font-semibold text-[rgba(235,245,255,0.9)]">
-                              {test.name}
+                              {isAnalyticsAbTestsLoading ? <Skeleton className="h-4 w-36" /> : test.name}
                             </td>
 
                             {/* Variant A */}
                             <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed">
-                              <div>{test.variantA.label}</div>
-                              {test.variantA.lift !== 0 && (
+                              {isAnalyticsAbTestsLoading ? <Skeleton className="h-4 w-40" /> : <div>{test.variantA.label}</div>}
+                              {!isAnalyticsAbTestsLoading && test.variantA.lift !== 0 && (
                                 <div className={`text-[9px] mt-0.5 ${test.variantA.lift > 0 ? 'text-[rgba(30,165,80,0.8)]' : 'text-[rgba(255,120,120,0.7)]'}`}>
                                   {test.variantA.lift > 0 ? '▲' : '▼'} {Math.abs(test.variantA.lift)}%
                                 </div>
@@ -2209,8 +2962,8 @@ export default function DashboardClient() {
 
                             {/* Variant B */}
                             <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed">
-                              <div>{test.variantB.label}</div>
-                              {test.variantB.lift !== 0 && (
+                              {isAnalyticsAbTestsLoading ? <Skeleton className="h-4 w-40" /> : <div>{test.variantB.label}</div>}
+                              {!isAnalyticsAbTestsLoading && test.variantB.lift !== 0 && (
                                 <div className={`text-[9px] mt-0.5 ${test.variantB.lift > 0 ? 'text-[rgba(30,165,80,0.8)]' : 'text-[rgba(255,120,120,0.7)]'}`}>
                                   {test.variantB.lift > 0 ? '▲' : '▼'} {Math.abs(test.variantB.lift)}%
                                 </div>
@@ -2219,7 +2972,9 @@ export default function DashboardClient() {
 
                             {/* Winner */}
                             <td className="py-3.5 px-4">
-                              {test.winner && test.winner !== 'none' ? (
+                              {isAnalyticsAbTestsLoading ? (
+                                <Skeleton className="h-4 w-20" />
+                              ) : test.winner && test.winner !== 'none' ? (
                                 <div className="font-mono text-[11px] text-[rgba(30,165,80,0.85)]">
                                   <span className="font-bold">B</span> <span className="text-[rgba(255,255,255,0.55)]">+{test.winnerLift}%</span>
                                 </div>
@@ -2232,25 +2987,33 @@ export default function DashboardClient() {
 
                             {/* Confidence */}
                             <td className="py-3.5 px-4">
-                              <div className="inline-flex items-center justify-center rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1 font-mono text-[9px] font-semibold text-[rgba(14,200,198,0.92)]">
-                                {test.confidence}%
-                              </div>
+                              {isAnalyticsAbTestsLoading ? (
+                                <Skeleton className="h-6 w-16 rounded-full" />
+                              ) : (
+                                <div className="inline-flex items-center justify-center rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1 font-mono text-[9px] font-semibold text-[rgba(14,200,198,0.92)]">
+                                  {test.confidence}%
+                                </div>
+                              )}
                             </td>
 
                             {/* Status */}
                             <td className="py-3.5 pl-4">
-                              <span
-                                className={[
-                                  'inline-flex items-center justify-center rounded-full border px-3 py-1.5 font-mono text-[8.5px] font-semibold leading-none',
-                                  test.status === 'complete'
-                                    ? 'border-[rgba(30,165,80,0.4)] bg-[rgba(30,165,80,0.12)] text-[rgba(100,220,120,0.92)]'
-                                    : test.status === 'running'
-                                    ? 'border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.14)] text-[rgba(14,200,198,0.92)]'
-                                    : 'border-[rgba(255,150,100,0.35)] bg-[rgba(255,150,100,0.12)] text-[rgba(255,180,120,0.88)]',
-                                ].join(' ')}
-                              >
-                                {test.status === 'complete' ? 'Complete' : test.status === 'running' ? 'Running' : 'Too Early'}
-                              </span>
+                              {isAnalyticsAbTestsLoading ? (
+                                <Skeleton className="h-6 w-20 rounded-full" />
+                              ) : (
+                                <span
+                                  className={[
+                                    'inline-flex items-center justify-center rounded-full border px-3 py-1.5 font-mono text-[8.5px] font-semibold leading-none',
+                                    test.status === 'complete'
+                                      ? 'border-[rgba(30,165,80,0.4)] bg-[rgba(30,165,80,0.12)] text-[rgba(100,220,120,0.92)]'
+                                      : test.status === 'running'
+                                      ? 'border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.14)] text-[rgba(14,200,198,0.92)]'
+                                      : 'border-[rgba(255,150,100,0.35)] bg-[rgba(255,150,100,0.12)] text-[rgba(255,180,120,0.88)]',
+                                  ].join(' ')}
+                                >
+                                  {test.status === 'complete' ? 'Complete' : test.status === 'running' ? 'Running' : 'Too Early'}
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -2262,13 +3025,19 @@ export default function DashboardClient() {
                 {/* A/B Tests Summary */}
                 <div className="mt-4 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
                   <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
-                    <span className="text-[rgba(14,200,198,0.75)]">✓ 1</span> test completed
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">3</span> currently running
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,180,120,0.75)]">1</span> awaiting more data
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,255,255,0.25)]">Avg sample size: 2.4K per variant</span>
+                    {isAnalyticsAbTestsLoading ? (
+                      <Skeleton className="h-3 w-full" />
+                    ) : (
+                      <>
+                        <span className="text-[rgba(14,200,198,0.75)]">✓ 1</span> test completed
+                        <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
+                        <span className="text-[rgba(14,200,198,0.75)]">3</span> currently running
+                        <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
+                        <span className="text-[rgba(255,180,120,0.75)]">1</span> awaiting more data
+                        <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
+                        <span className="text-[rgba(255,255,255,0.25)]">Avg sample size: 2.4K per variant</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2276,6 +3045,14 @@ export default function DashboardClient() {
 
             {activeTab === 'content' && activeContentLever === 'kb' && (
               <div>
+                {kbDocuments.length === 0 ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      Knowledge Base is empty. Upload your first document to start training.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 <div className="mb-5 flex items-center justify-between">
                   <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
                     Knowledge Base
@@ -2579,6 +3356,14 @@ export default function DashboardClient() {
 
             {activeTab === 'contacts' && activeContactsLever === 'all' && (
               <div>
+                {contacts.length === 0 ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      No contacts are available for this tenant yet.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
                   <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
@@ -2593,7 +3378,7 @@ export default function DashboardClient() {
                       padding: '6px 18px',
                     }}
                   >
-                    284 HubSpot Synced
+                    {contactsSummary.totalSynced} HubSpot Synced
                   </div>
                 </div>
 
@@ -2621,10 +3406,10 @@ export default function DashboardClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {CONTACTS.map((contact, idx) => (
+                      {contacts.map((contact, idx) => (
                         <tr
                           key={contact.id}
-                          style={idx < CONTACTS.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
+                          style={idx < contacts.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
                         >
                           {/* Name */}
                           <td
@@ -2699,7 +3484,7 @@ export default function DashboardClient() {
                     className="text-center font-mono text-[11px] text-[rgba(255,255,255,0.28)]"
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '14px 20px' }}
                   >
-                    Showing 7 of 284 contacts · Enriched by{' '}
+                    Showing {contacts.length} of {contactsSummary.totalSynced} contacts · Enriched by{' '}
                     <span style={{ color: 'rgba(24,218,214,0.88)' }}>lead_qualifier</span>
                     {' & '}
                     <span style={{ color: 'rgba(24,218,214,0.88)' }}>churn_predictor</span>
@@ -2710,6 +3495,14 @@ export default function DashboardClient() {
 
             {activeTab === 'contacts' && activeContactsLever === 'pipeline' && (
               <div>
+                {pipelineCols.length === 0 ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      Pipeline data is not available.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
                   <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
@@ -2725,13 +3518,13 @@ export default function DashboardClient() {
                       boxShadow: '0 0 14px rgba(200,160,40,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
                     }}
                   >
-                    $142K Pipeline Value
+                    {contactsSummary.pipelineValue} Pipeline Value
                   </div>
                 </div>
 
                 {/* Kanban columns */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '14px' }}>
-                  {PIPELINE_COLS.map((col) => (
+                  {pipelineCols.map((col) => (
                     <div
                       key={col.stage}
                       className="rounded-2xl overflow-hidden"
@@ -2789,6 +3582,14 @@ export default function DashboardClient() {
 
             {activeTab === 'contacts' && activeContactsLever === 'segments' && (
               <div>
+                {segments.length === 0 ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      No active segments found.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
                   <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
@@ -2804,7 +3605,7 @@ export default function DashboardClient() {
                       boxShadow: '0 0 14px rgba(14,180,176,0.45), 0 0 28px rgba(14,180,176,0.22), inset 0 1px 0 rgba(255,255,255,0.12)',
                     }}
                   >
-                    6 Active
+                    {contactsSummary.activeSegments} Active
                   </div>
                 </div>
 
@@ -2833,10 +3634,10 @@ export default function DashboardClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {SEGMENTS.map((seg, idx) => (
+                      {segments.map((seg, idx) => (
                         <tr
                           key={seg.id}
-                          style={idx < SEGMENTS.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
+                          style={idx < segments.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
                         >
                           {/* Segment name */}
                           <td style={{ padding: '16px 14px 16px 24px', fontSize: '13px', fontWeight: 600, color: 'rgba(230,242,255,0.94)', whiteSpace: 'nowrap' }}>
@@ -2881,6 +3682,14 @@ export default function DashboardClient() {
             {/* ── SETTINGS: BILLING ─────────────────────────────────────────── */}
             {activeTab === 'settings' && activeSettingsLever === 'billing' && (
               <div>
+                {billingHistory.length === 0 ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      Billing history is unavailable.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 <div className="flex gap-4" style={{ alignItems: 'flex-start' }}>
                   {/* Left column */}
                   <div className="flex flex-col gap-3.5" style={{ width: 360, flexShrink: 0 }}>
@@ -2894,7 +3703,7 @@ export default function DashboardClient() {
                         <span className="font-display text-[36px] font-bold text-[rgba(255,210,100,0.9)] leading-none">$499</span>
                         <span className="font-sans text-sm text-[rgba(255,255,255,0.4)]">/mo</span>
                       </div>
-                      <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-[0.5px] mb-4">Stripe · Renews May 12, 2026</div>
+                      <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-[0.5px] mb-4">Microsoft Marketplace · Renews May 12, 2026</div>
 
                       {/* Usage bars */}
                       <div className="space-y-2.5 mb-5">
@@ -2938,7 +3747,7 @@ export default function DashboardClient() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => toast.info('Invoice download requires Stripe billing portal integration.')}
+                          onClick={() => toast.info('Invoice download is managed via Microsoft Marketplace billing portal.')}
                           className="px-3 py-[5px] rounded-[20px] font-sans text-[11px] font-bold tracking-[0.5px] transition-all bg-[rgba(255,255,255,0.05)] text-[rgba(255,255,255,0.45)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.1)] hover:text-[rgba(255,255,255,0.7)]"
                         >
                           Download Invoice
@@ -2950,14 +3759,7 @@ export default function DashboardClient() {
                     <GlassCard className="p-4" style={{ background: 'rgba(14,124,123,0.06)', borderColor: 'rgba(14,124,123,0.25)' }}>
                       <div className="font-mono text-[9px] tracking-[2px] text-[rgba(14,200,198,0.55)] uppercase mb-2">Platform Status</div>
                       <div className="flex flex-col gap-1.5">
-                        {[
-                          { name: 'Vercel Edge',    status: 'Operational' },
-                          { name: 'Neon Database',  status: 'Operational' },
-                          { name: 'Upstash Redis',  status: 'Operational' },
-                          { name: 'Anthropic API',  status: 'Operational' },
-                          { name: 'Azure Key Vault',status: 'Operational' },
-                          { name: 'HubSpot CRM',    status: 'Connected'   },
-                        ].map(({ name, status }) => (
+                        {platformStatuses.map(({ name, status }) => (
                           <div key={name} className="flex items-center justify-between">
                             <span className="font-mono text-[9.5px] text-[rgba(255,255,255,0.5)]">{name}</span>
                             <span className="font-mono text-[9.5px] text-[rgba(30,165,80,0.85)]">● {status}</span>
@@ -2982,12 +3784,7 @@ export default function DashboardClient() {
                           </tr>
                         </thead>
                         <tbody>
-                          {[
-                            { date:'Apr 12, 2026', amount:'$499.00', status:'Paid' },
-                            { date:'Mar 12, 2026', amount:'$499.00', status:'Paid' },
-                            { date:'Feb 12, 2026', amount:'$399.00', status:'Paid' },
-                            { date:'Jan 12, 2026', amount:'$399.00', status:'Paid' },
-                          ].map(({ date, amount, status }) => (
+                          {billingHistory.map(({ date, amount, status }) => (
                             <tr key={date} className="border-b border-[rgba(255,255,255,0.04)] last:border-0 hover:bg-[rgba(255,255,255,0.02)]">
                               <td className="font-mono text-[10.5px] text-[rgba(255,255,255,0.62)] py-2.5 pr-3">{date}</td>
                               <td className="font-mono text-[10.5px] text-[rgba(255,255,255,0.62)] py-2.5 pr-3">{amount}</td>
@@ -3107,21 +3904,66 @@ export default function DashboardClient() {
             {/* ── SETTINGS: INTEGRATIONS ───────────────────────────────────── */}
             {activeTab === 'settings' && activeSettingsLever === 'integrations' && (
               <div>
+                {integrations.length === 0 ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      No integrations configured yet.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 <div className="flex items-center justify-between mb-3.5">
                   <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.4)] uppercase">Integrations</div>
-                  <span className="px-2.5 py-[3px] rounded-[20px] bg-[rgba(14,124,123,0.12)] border border-[rgba(14,124,123,0.28)] font-mono text-[8.5px] text-[rgba(14,200,198,0.7)] tracking-[1px]">8 Connected</span>
+                  <span className="px-2.5 py-[3px] rounded-[20px] bg-[rgba(14,124,123,0.12)] border border-[rgba(14,124,123,0.28)] font-mono text-[8.5px] text-[rgba(14,200,198,0.7)] tracking-[1px]">{integrations.length} Connected</span>
                 </div>
+
+                <GlassCard className="p-4 mb-3.5 border-[rgba(14,124,123,0.28)]">
+                  <div className="font-mono text-[9px] tracking-[2px] text-[rgba(14,200,198,0.6)] uppercase mb-3">CMS Publish (Shopify/Webflow)</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-2.5">
+                    <select
+                      value={cmsProvider}
+                      onChange={(e) => setCmsProvider(e.target.value as 'shopify' | 'webflow')}
+                      className="rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
+                    >
+                      <option value="shopify">Shopify</option>
+                      <option value="webflow">Webflow</option>
+                    </select>
+                    <input
+                      value={cmsTitle}
+                      onChange={(e) => setCmsTitle(e.target.value)}
+                      placeholder="Post title"
+                      className="rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2.5 mb-2.5">
+                    <input
+                      value={cmsSlug}
+                      onChange={(e) => setCmsSlug(e.target.value)}
+                      placeholder="post-slug"
+                      className="rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleCmsPublish()}
+                      disabled={cmsPublishLoading}
+                      className="px-4 py-2 rounded-lg border border-[rgba(14,200,198,0.45)] bg-[rgba(14,124,123,0.3)] font-mono text-[11px] font-bold text-[rgba(14,200,198,1)] hover:bg-[rgba(14,124,123,0.5)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {cmsPublishLoading ? 'Publishing…' : `Publish to ${cmsProvider === 'shopify' ? 'Shopify' : 'Webflow'}`}
+                    </button>
+                  </div>
+                  <textarea
+                    value={cmsBody}
+                    onChange={(e) => setCmsBody(e.target.value)}
+                    rows={5}
+                    placeholder="<h1>Your content</h1><p>Write or paste HTML content...</p>"
+                    className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
+                  />
+                </GlassCard>
+
                 <GlassCard className="p-4">
-                  {[
-                    { icon: '🔵', name: 'HubSpot CRM',        desc: 'Contacts · Deals · Webhooks · Technology Partner', statusText: 'Connected · Syncing',  dotColor: 'rgba(30,165,80,1)',   textColor: 'rgba(30,165,80,0.85)' },
-                    { icon: '💳', name: 'Stripe',              desc: 'Subscriptions · Billing · Webhooks · TEVV F-02',   statusText: 'Connected',            dotColor: 'rgba(30,165,80,1)',   textColor: 'rgba(30,165,80,0.85)' },
-                    { icon: '🔷', name: 'Microsoft 365',       desc: 'Teams · SharePoint · Mail · MSAL · SAML SSO',      statusText: 'Connected',            dotColor: 'rgba(30,165,80,1)',   textColor: 'rgba(30,165,80,0.85)' },
-                    { icon: '🟣', name: 'Anthropic Claude API',desc: 'Opus 4 · Sonnet 4 · Haiku — All 39 agents',       statusText: 'Connected · Active',   dotColor: 'rgba(30,165,80,1)',   textColor: 'rgba(30,165,80,0.85)' },
-                    { icon: '🔑', name: 'Azure Key Vault',     desc: 'JWT keys · API secrets · RBAC · Managed Identity', statusText: 'Connected',            dotColor: 'rgba(30,165,80,1)',   textColor: 'rgba(30,165,80,0.85)' },
-                    { icon: '🐘', name: 'Neon Postgres',       desc: '17 tables · Drizzle ORM · Serverless',             statusText: 'Connected',            dotColor: 'rgba(30,165,80,1)',   textColor: 'rgba(30,165,80,0.85)' },
-                    { icon: '⚡', name: 'Upstash Redis',       desc: 'Rate limiting · Sessions · TEVV F-03',             statusText: 'Connected',            dotColor: 'rgba(30,165,80,1)',   textColor: 'rgba(30,165,80,0.85)' },
-                    { icon: '🤖', name: 'Reddit API',          desc: 'Community posts — HITL gate always active',        statusText: 'Connected · HITL Only', dotColor: 'rgba(201,168,76,1)', textColor: 'rgba(201,168,76,0.8)' },
-                  ].map(({ icon, name, desc, statusText, dotColor, textColor }, idx) => (
+                  {integrations.map(({ icon, name, desc, statusText, dotColor, textColor }, idx) => {
+                    const actionState = getIntegrationActionState(name, statusText);
+                    return (
                     <div key={name} className={`flex items-center justify-between py-3 ${idx > 0 ? 'border-t border-[rgba(255,255,255,0.05)]' : ''}`}>
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-[10px] bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.09)] flex items-center justify-center text-[18px] flex-shrink-0">
@@ -3132,12 +3974,20 @@ export default function DashboardClient() {
                           <div className="font-mono text-[8.5px] text-[rgba(255,255,255,0.28)] mt-[1px]">{desc}</div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-[5px] font-mono text-[9px]" style={{ color: textColor }}>
-                        <span className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: dotColor, boxShadow: `0 0 8px ${dotColor}` }} />
-                        {statusText}
+                      <div className="flex items-center gap-3">
+                        <IntegrationActionButton
+                          label={actionState.label}
+                          onClick={() => handleIntegrationAction(name, statusText)}
+                          loading={integrationActionLoading === name}
+                          disabled={!actionState.enabled}
+                        />
+                        <div className="flex items-center gap-[5px] font-mono text-[9px]" style={{ color: textColor }}>
+                          <span className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: dotColor, boxShadow: `0 0 8px ${dotColor}` }} />
+                          {statusText}
+                        </div>
                       </div>
                     </div>
-                  ))}
+                  );})}
                 </GlassCard>
               </div>
             )}
@@ -3145,6 +3995,14 @@ export default function DashboardClient() {
             {/* ── SETTINGS: SECURITY ───────────────────────────────────────── */}
             {activeTab === 'settings' && activeSettingsLever === 'security' && (
               <div>
+                {tevvControls.length === 0 || authItems.length === 0 ? (
+                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                      Security controls are not available yet.
+                    </div>
+                  </GlassCard>
+                ) : null}
+
                 <div className="flex items-center justify-between mb-3.5">
                   <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.4)] uppercase">Security &amp; Compliance</div>
                   <span className="px-2.5 py-[3px] rounded-[20px] bg-[rgba(14,124,123,0.12)] border border-[rgba(14,124,123,0.28)] font-mono text-[8.5px] text-[rgba(14,200,198,0.7)] tracking-[1px]">NIST TEVV {tevvScore}/100</span>
@@ -3154,12 +4012,7 @@ export default function DashboardClient() {
                   <GlassCard className="p-4">
                     <div className="font-mono text-[9px] tracking-[2px] text-[rgba(14,200,198,0.55)] uppercase mb-3">TEVV Controls</div>
                     <div className="flex flex-col gap-2">
-                      {[
-                        { code: 'F-01: Docker USER node (non-root)', detail: 'CI gate: whoami === node' },
-                        { code: 'F-02: HMAC-SHA256 Webhooks',         detail: '±300s replay window · CWE-208' },
-                        { code: 'F-03: RateLimiter never fails open',  detail: 'Returns false on all errors' },
-                        { code: 'F-04: WCAG 2.2 AA Accessibility',     detail: 'axe-core CI · 0 violations' },
-                      ].map(({ code, detail }, idx) => (
+                      {tevvControls.map(({ code, detail }, idx) => (
                         <div key={code} className={`flex items-center justify-between py-2 ${idx > 0 ? 'border-t border-[rgba(255,255,255,0.05)]' : ''}`}>
                           <div className="flex items-start gap-2.5">
                             <span className="text-[rgba(30,165,80,0.85)] text-[14px] mt-0.5 flex-shrink-0">✓</span>
@@ -3178,13 +4031,7 @@ export default function DashboardClient() {
                   <GlassCard className="p-4">
                     <div className="font-mono text-[9px] tracking-[2px] text-[rgba(201,168,76,0.55)] uppercase mb-3">Authentication</div>
                     <div className="flex flex-col gap-2.5">
-                      {[
-                        { name: 'JWT · RS256 Algorithm',        detail: 'Azure Key Vault · Entra ID',         badge: 'Active' },
-                        { name: 'SAML SSO (Enterprise)',        detail: 'Microsoft Entra ID',                  badge: 'Active' },
-                        { name: 'Rate Limiter',                 detail: '60 req/min · Upstash + memory',       badge: 'Active' },
-                        { name: 'OWASP ASVS V3.4.1/V3.4.2',   detail: 'Auth middleware compliance',           badge: 'Pass'   },
-                        { name: 'Test Suite',                   detail: `${testsPassedLabel} · 0 failures`,    badge: '100%'   },
-                      ].map(({ name, detail, badge }) => (
+                      {authItems.map(({ name, detail, badge }) => (
                         <div key={name} className="flex items-center justify-between">
                           <div>
                             <div className="font-sans text-[12px] text-[rgba(255,255,255,0.8)]">{name}</div>
