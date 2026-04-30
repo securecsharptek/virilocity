@@ -38,5 +38,32 @@ next-env.d.ts
 # SBOM (generated in CI — do not commit)
 sbom.json
 
-# Markdown
+# Markdown (keep README and AGENTS for documentation)
 *.md
+!README.md
+!AGENTS.md
+*.mdx
+*.docs.md
+
+# Temporary directories and files
+.tmp/
+.tmp_*/
+.tmp_dev_guide
+.tmp_dev_guide.*
+.tmp_user_stories
+.tmp_user_stories.*
+*.tmp
+*.temp
+*.bak
+
+# Temp text, archive, and XML exports
+*.txt
+*.zip
+*.xml
+
+# Local secrets / scratch JSON
+.local-secrets*.json
+
+# ngrok local tunnel config
+ngrok*.yml
+ngrok*.yaml
