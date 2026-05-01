@@ -41,6 +41,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // Compute status for integrations in parallel
   const statuses = await Promise.all([
     checkHubSpot(tenantId),
+    checkLinkedIn(tenantId),
     checkM365(tenant),
     checkNeon(),
     checkRedis(),
@@ -67,6 +68,19 @@ async function checkHubSpot(tenantId: string): Promise<IntegrationStatus> {
     };
   } catch (e) {
     return { name: 'HubSpot CRM', connected: false, reason: 'unavailable' };
+  }
+}
+
+async function checkLinkedIn(tenantId: string): Promise<IntegrationStatus> {
+  try {
+    const token = await getSecret(`linkedin-access-${tenantId}`);
+    return {
+      name: 'LinkedIn',
+      connected: !!token && token.length > 0,
+      reason: token ? undefined : 'key_missing',
+    };
+  } catch (e) {
+    return { name: 'LinkedIn', connected: false, reason: 'unavailable' };
   }
 }
 
@@ -184,6 +198,11 @@ function mapToIntegrationItems(statuses: IntegrationStatus[]): IntegrationItem[]
       'Microsoft 365': {
         icon: '🔷',
         desc: 'Teams · SharePoint · Mail · MSAL · SAML SSO',
+        defaultStatus: 'Connected',
+      },
+      'LinkedIn': {
+        icon: '🔗',
+        desc: 'OAuth 2.0 · Direct social post publishing',
         defaultStatus: 'Connected',
       },
       'Anthropic Claude API': {

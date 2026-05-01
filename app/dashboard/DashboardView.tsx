@@ -3,7 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import DashboardHeader from '../../components/layout/DashboardHeader';
 import TabButton from '../../components/ui/TabButton';
 import Lever from '../../components/ui/Lever';
@@ -11,6 +12,7 @@ import KPICard from '../../components/ui/KPICard';
 import GlassCard from '../../components/ui/GlassCard';
 import Skeleton from '../../components/ui/Skeleton';
 import IntegrationActionButton from '../../components/ui/IntegrationActionButton';
+import Modal from '../../components/ui/Modal';
 import SectionHeader from '../../components/ui/SectionHeader';
 import ActivityFeed, { type FeedItem } from '../../components/ui/ActivityFeed';
 import ToastContainer, { useToast } from '../../components/ui/Toast';
@@ -232,6 +234,7 @@ interface DashboardApiResponse {
       activeSegments: number;
     };
   };
+  socialPosts?: SocialPost[];
   settings?: {
     billingHistory: BillingHistoryItem[];
     platformStatus: PlatformStatusItem[];
@@ -451,6 +454,7 @@ type SocialPost = {
   body: string[];
   primaryAction: string;
   secondaryAction: string;
+  status: 'draft' | 'posted';
 };
 
 const SOCIAL_POSTS: SocialPost[] = [
@@ -468,6 +472,7 @@ const SOCIAL_POSTS: SocialPost[] = [
     ],
     primaryAction: 'Post Now',
     secondaryAction: 'Edit',
+    status: 'draft',
   },
   {
     id: '2',
@@ -482,6 +487,7 @@ const SOCIAL_POSTS: SocialPost[] = [
     ],
     primaryAction: 'Send',
     secondaryAction: 'A/B Test',
+    status: 'draft',
   },
 ];
 
@@ -654,6 +660,14 @@ type IntegrationItem = {
   textColor: string;
 };
 
+type CmsPlatformConnection = {
+  provider: string;
+  configured: boolean;
+  connected: boolean;
+  statusText: string;
+  details?: string;
+};
+
 type TevvControlItem = {
   code: string;
   detail: string;
@@ -751,6 +765,7 @@ export default function DashboardClient() {
   const [billingHistory, setBillingHistory] = useState<BillingHistoryItem[]>(BILLING_HISTORY);
   const [platformStatuses, setPlatformStatuses] = useState<PlatformStatusItem[]>(PLATFORM_STATUS);
   const [integrations, setIntegrations] = useState<IntegrationItem[]>(INTEGRATIONS);
+  const [socialPosts, setSocialPosts] = useState<SocialPost[]>(SOCIAL_POSTS);
   const [tevvControls, setTevvControls] = useState<TevvControlItem[]>(TEVV_CONTROLS);
   const [authItems, setAuthItems] = useState<AuthItem[]>(AUTH_ITEMS);
   const [lastRunSummary, setLastRunSummary] = useState({
@@ -778,11 +793,22 @@ export default function DashboardClient() {
   const [dashboardLoadState, setDashboardLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [dashboardLoadError, setDashboardLoadError] = useState<string | null>(null);
   const [integrationActionLoading, setIntegrationActionLoading] = useState<string | null>(null);
+  const [socialActionLoadingId, setSocialActionLoadingId] = useState<string | null>(null);
+  const [editSocialPost, setEditSocialPost] = useState<SocialPost | null>(null);
+  const [editSocialBody, setEditSocialBody] = useState('');
+  const [editSocialSaving, setEditSocialSaving] = useState(false);
   const [cmsProvider, setCmsProvider] = useState<'shopify' | 'webflow'>('shopify');
   const [cmsTitle, setCmsTitle] = useState('');
   const [cmsSlug, setCmsSlug] = useState('');
   const [cmsBody, setCmsBody] = useState('');
   const [cmsPublishLoading, setCmsPublishLoading] = useState(false);
+  const [wpApiUrl, setWpApiUrl] = useState('');
+  const [wpUser, setWpUser] = useState('');
+  const [wpAppPassword, setWpAppPassword] = useState('');
+  const [wpConnectLoading, setWpConnectLoading] = useState(false);
+  const [cmsPlatformsLoading, setCmsPlatformsLoading] = useState(false);
+  const [cmsPlatforms, setCmsPlatforms] = useState<CmsPlatformConnection[]>([]);
+  const [showWordPressSyncModal, setShowWordPressSyncModal] = useState(false);
   
   // Agent filter state
   const [agentFilterStatus, setAgentFilterStatus] = useState<'all' | 'running' | 'idle' | 'hitl'>('all');
@@ -807,8 +833,36 @@ export default function DashboardClient() {
   const isAnalyticsConversionsLoading = dashboardLoadState === 'loading';
   const isAnalyticsAbTestsLoading = dashboardLoadState === 'loading';
 
+  const wordpressPlatform = cmsPlatforms.find(platform => platform.provider === 'wordpress');
+  const wordpressIntegration: IntegrationItem = {
+    icon: '📰',
+    name: 'WordPress CMS',
+    desc: 'Multi-CMS publishing target · WP REST API',
+    statusText: wordpressPlatform?.statusText ?? 'Not Configured',
+    dotColor: wordpressPlatform?.connected
+      ? 'rgba(30,165,80,1)'
+      : wordpressPlatform?.configured
+      ? 'rgba(201,168,76,1)'
+      : 'rgba(107,114,128,1)',
+    textColor: wordpressPlatform?.connected
+      ? 'rgba(30,165,80,0.85)'
+      : wordpressPlatform?.configured
+      ? 'rgba(201,168,76,0.8)'
+      : 'rgba(107,114,128,0.85)',
+  };
+
+  const integrationRows: IntegrationItem[] = [
+    ...integrations.filter(item => item.name !== 'WordPress CMS'),
+    wordpressIntegration,
+  ];
+
+  const connectedIntegrations = integrationRows.filter(item => item.statusText.toLowerCase().startsWith('connected')).length;
+  const isLightTheme = theme === 'light';
+
   const integrationActionConfig: Record<string, { label: string; href?: string; enabled: boolean }> = {
     'HubSpot CRM': { label: 'Sync HubSpot', href: '/api/hubspot/auth', enabled: true },
+    'LinkedIn': { label: 'Connect LinkedIn', href: '/api/linkedin/auth', enabled: true },
+    'WordPress CMS': { label: 'Sync', enabled: true },
     'Microsoft 365': { label: 'Connect M365', enabled: false },
     'Anthropic Claude API': { label: 'Connect Claude', enabled: false },
     'Azure Key Vault': { label: 'Connect Vault', enabled: false },
@@ -825,10 +879,20 @@ export default function DashboardClient() {
       return { label: 'Disconnect', enabled: true, href: '/api/hubspot/disconnect' };
     }
 
+    if (name === 'LinkedIn' && statusText.toLowerCase().startsWith('connected')) {
+      return { label: 'Disconnect', enabled: true, href: '/api/linkedin/disconnect' };
+    }
+
     return { label: cfg.label, enabled: cfg.enabled, href: cfg.href };
   };
 
   const handleIntegrationAction = (name: string, statusText: string) => {
+    if (name === 'WordPress CMS') {
+      setShowWordPressSyncModal(true);
+      void refreshCmsPlatforms(true);
+      return;
+    }
+
     const cfg = getIntegrationActionState(name, statusText);
     if (!cfg.enabled || !cfg.href) {
       toast.info(`${name} integration action will be enabled in next step.`);
@@ -994,6 +1058,10 @@ export default function DashboardClient() {
       }
     }
 
+    if (Array.isArray(data.socialPosts)) {
+      setSocialPosts(data.socialPosts);
+    }
+
     if (data.settings && typeof data.settings === 'object') {
       if (Array.isArray(data.settings.billingHistory)) {
         setBillingHistory(data.settings.billingHistory);
@@ -1050,9 +1118,10 @@ export default function DashboardClient() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const hubspot = params.get('hubspot');
+    const linkedin = params.get('linkedin');
     const reason = params.get('reason');
 
-    if (!hubspot) return;
+    if (!hubspot && !linkedin) return;
 
     if (hubspot === 'connected') {
       toast.success('HubSpot connected successfully.');
@@ -1063,18 +1132,96 @@ export default function DashboardClient() {
       toast.error(`HubSpot error: ${decodedReason}`);
     }
 
+    if (linkedin === 'connected') {
+      toast.success('LinkedIn connected successfully.');
+    } else if (linkedin === 'disconnected') {
+      toast.info('LinkedIn disconnected successfully.');
+    } else if (linkedin === 'error') {
+      const decodedReason = reason ? decodeURIComponent(reason) : 'Unknown error';
+      toast.error(`LinkedIn error: ${decodedReason}`);
+    }
+
     params.delete('hubspot');
+    params.delete('linkedin');
     params.delete('reason');
     const next = params.toString();
     const cleanedUrl = `${window.location.pathname}${next ? `?${next}` : ''}`;
     window.history.replaceState({}, '', cleanedUrl);
   }, [toast]);
 
-  const postAction = async (action: string, id?: string) => {
+  const openSocialEdit = (post: SocialPost) => {
+    setEditSocialPost(post);
+    setEditSocialBody(post.body.join('\n\n'));
+  };
+
+  const closeSocialEdit = () => {
+    setEditSocialPost(null);
+    setEditSocialBody('');
+  };
+
+  const handleEditSocialSave = async () => {
+    if (!editSocialPost) return;
+    const trimmed = editSocialBody.trim();
+    if (!trimmed) {
+      toast.error('Post content cannot be empty.');
+      return;
+    }
+
+    setEditSocialSaving(true);
+    try {
+      const paragraphs = trimmed.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+      const result = await postAction('editSocialPost', undefined, {
+        postId: editSocialPost.id,
+        postContent: paragraphs,
+      });
+      if (result.data) applyDashboardData(result.data);
+      toast.success('Post updated.');
+      closeSocialEdit();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save post.');
+    } finally {
+      setEditSocialSaving(false);
+    }
+  };
+
+  const handleSocialPrimaryAction = async (post: SocialPost) => {
+    if (post.status === 'posted') {
+      toast.info('This post has already been published.');
+      return;
+    }
+
+    if (post.channel.toLowerCase() !== 'linkedin') {
+      toast.info(`${post.primaryAction} action will be enabled in the next step.`);
+      return;
+    }
+
+    setSocialActionLoadingId(post.id);
+
+    try {
+      const postBody = post.body.join('\n\n').trim();
+      const result = await postAction('publishSocialPost', undefined, {
+        postId: post.id,
+        postChannel: 'linkedin',
+        postBody,
+      });
+
+      if (result.data) {
+        applyDashboardData(result.data);
+      }
+      toast.success('LinkedIn post published successfully.');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'LinkedIn publish failed';
+      toast.error(msg);
+    } finally {
+      setSocialActionLoadingId(null);
+    }
+  };
+
+  const postAction = async (action: string, id?: string, extra?: Record<string, unknown>) => {
     const res = await fetch('/dashboard/data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, id }),
+      body: JSON.stringify({ action, id, ...extra }),
     });
 
     if (!res.ok) {
@@ -1131,6 +1278,95 @@ export default function DashboardClient() {
       setCmsPublishLoading(false);
     }
   };
+
+  const refreshCmsPlatforms = async (silent = false) => {
+    if (!silent) {
+      setCmsPlatformsLoading(true);
+    }
+
+    try {
+      const res = await fetch('/api/cms/platforms', { cache: 'no-store' });
+      const payload = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        platforms?: CmsPlatformConnection[];
+        error?: { message?: string } | string;
+      } | null;
+
+      if (!res.ok) {
+        const msg = typeof payload?.error === 'string'
+          ? payload.error
+          : payload?.error?.message ?? 'Failed to load CMS platforms';
+        throw new Error(msg);
+      }
+
+      if (Array.isArray(payload?.platforms)) {
+        setCmsPlatforms(payload.platforms);
+      }
+    } catch (error) {
+      if (!silent) {
+        const msg = error instanceof Error ? error.message : 'Failed to load CMS platforms';
+        toast.error(msg);
+      }
+    } finally {
+      if (!silent) {
+        setCmsPlatformsLoading(false);
+      }
+    }
+  };
+
+  const handleConnectWordPress = async (closeOnSuccess = false) => {
+    if (!wpApiUrl.trim() || !wpUser.trim() || !wpAppPassword.trim()) {
+      toast.error('WP_API_URL, WP_USER, and WP_APP_PASSWORD are required.');
+      return;
+    }
+
+    setWpConnectLoading(true);
+    try {
+      const res = await fetch('/api/cms/platforms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'wordpress',
+          WP_API_URL: wpApiUrl.trim(),
+          WP_USER: wpUser.trim(),
+          WP_APP_PASSWORD: wpAppPassword.trim(),
+        }),
+      });
+
+      const payload = (await res.json().catch(() => null)) as {
+        connected?: boolean;
+        error?: { message?: string } | string;
+      } | null;
+
+      if (!res.ok || payload?.connected !== true) {
+        const msg = typeof payload?.error === 'string'
+          ? payload.error
+          : payload?.error?.message ?? 'WordPress connection failed';
+        throw new Error(msg);
+      }
+
+      toast.success('WordPress connected successfully.');
+      setWpAppPassword('');
+      await refreshCmsPlatforms(true);
+      if (closeOnSuccess) {
+        setShowWordPressSyncModal(false);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'WordPress connection failed';
+      toast.error(msg);
+    } finally {
+      setWpConnectLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      activeTab === 'settings'
+      && activeSettingsLever === 'integrations'
+    ) {
+      void refreshCmsPlatforms(false);
+    }
+  }, [activeTab, activeSettingsLever]);
 
   const handleRunAutopilot = async () => {
     try {
@@ -3192,7 +3428,7 @@ export default function DashboardClient() {
 
                 {/* Post cards */}
                 <div className="flex flex-col gap-4">
-                  {SOCIAL_POSTS.map((post) => (
+                  {socialPosts.map((post) => (
                     <div
                       key={post.id}
                       className="rounded-2xl border border-[rgba(14,200,198,0.2)] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.07)]"
@@ -3225,10 +3461,33 @@ export default function DashboardClient() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button className="rounded-full border border-[rgba(14,200,198,0.55)] bg-[rgba(14,160,156,0.28)] px-4 py-1.5 text-[11px] font-semibold text-[rgba(24,222,220,0.97)] hover:bg-[rgba(14,160,156,0.44)] hover:border-[rgba(14,200,198,0.78)] transition-all duration-150">
-                            {post.primaryAction}
-                          </button>
-                          <button className="rounded-full border border-[rgba(210,228,255,0.28)] bg-[rgba(210,228,255,0.06)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.75)] hover:bg-[rgba(210,228,255,0.13)] hover:text-white hover:border-[rgba(210,228,255,0.46)] transition-all duration-150">
+                          {post.status === 'posted' && (
+                            <span className="rounded-full border border-[rgba(30,165,80,0.45)] bg-[rgba(30,165,80,0.12)] px-3 py-1 text-[10px] font-mono uppercase tracking-[1.2px] text-[rgba(120,245,165,0.96)]">
+                              Posted
+                            </span>
+                          )}
+                          {post.status !== 'posted' && (
+                            <button
+                              onClick={() => { void handleSocialPrimaryAction(post); }}
+                              disabled={socialActionLoadingId === post.id}
+                              aria-busy={socialActionLoadingId === post.id}
+                              className="rounded-full border border-[rgba(14,200,198,0.55)] bg-[rgba(14,160,156,0.28)] px-4 py-1.5 text-[11px] font-semibold text-[rgba(24,222,220,0.97)] hover:bg-[rgba(14,160,156,0.44)] hover:border-[rgba(14,200,198,0.78)] transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-55"
+                            >
+                              <span className="inline-flex items-center gap-2">
+                                {socialActionLoadingId === post.id && (
+                                  <span
+                                    aria-hidden="true"
+                                    className="h-3.5 w-3.5 rounded-full border border-current border-t-transparent animate-spin"
+                                  />
+                                )}
+                                {socialActionLoadingId === post.id ? 'Posting...' : post.primaryAction}
+                              </span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => openSocialEdit(post)}
+                            disabled={post.status === 'posted'}
+                            className="rounded-full border border-[rgba(210,228,255,0.28)] bg-[rgba(210,228,255,0.06)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.75)] hover:bg-[rgba(210,228,255,0.13)] hover:text-white hover:border-[rgba(210,228,255,0.46)] transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40">
                             {post.secondaryAction}
                           </button>
                         </div>
@@ -3904,7 +4163,7 @@ export default function DashboardClient() {
             {/* ── SETTINGS: INTEGRATIONS ───────────────────────────────────── */}
             {activeTab === 'settings' && activeSettingsLever === 'integrations' && (
               <div>
-                {integrations.length === 0 ? (
+                {integrationRows.length === 0 ? (
                   <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
                     <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
                       No integrations configured yet.
@@ -3914,7 +4173,7 @@ export default function DashboardClient() {
 
                 <div className="flex items-center justify-between mb-3.5">
                   <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.4)] uppercase">Integrations</div>
-                  <span className="px-2.5 py-[3px] rounded-[20px] bg-[rgba(14,124,123,0.12)] border border-[rgba(14,124,123,0.28)] font-mono text-[8.5px] text-[rgba(14,200,198,0.7)] tracking-[1px]">{integrations.length} Connected</span>
+                  <span className="px-2.5 py-[3px] rounded-[20px] bg-[rgba(14,124,123,0.12)] border border-[rgba(14,124,123,0.28)] font-mono text-[8.5px] text-[rgba(14,200,198,0.7)] tracking-[1px]">{connectedIntegrations}/{integrationRows.length} Connected</span>
                 </div>
 
                 <GlassCard className="p-4 mb-3.5 border-[rgba(14,124,123,0.28)]">
@@ -3961,7 +4220,7 @@ export default function DashboardClient() {
                 </GlassCard>
 
                 <GlassCard className="p-4">
-                  {integrations.map(({ icon, name, desc, statusText, dotColor, textColor }, idx) => {
+                  {integrationRows.map(({ icon, name, desc, statusText, dotColor, textColor }, idx) => {
                     const actionState = getIntegrationActionState(name, statusText);
                     return (
                     <div key={name} className={`flex items-center justify-between py-3 ${idx > 0 ? 'border-t border-[rgba(255,255,255,0.05)]' : ''}`}>
@@ -3978,7 +4237,7 @@ export default function DashboardClient() {
                         <IntegrationActionButton
                           label={actionState.label}
                           onClick={() => handleIntegrationAction(name, statusText)}
-                          loading={integrationActionLoading === name}
+                          loading={name === 'WordPress CMS' ? wpConnectLoading : integrationActionLoading === name}
                           disabled={!actionState.enabled}
                         />
                         <div className="flex items-center gap-[5px] font-mono text-[9px]" style={{ color: textColor }}>
@@ -3991,6 +4250,82 @@ export default function DashboardClient() {
                 </GlassCard>
               </div>
             )}
+
+            <Modal
+              open={showWordPressSyncModal}
+              onClose={() => setShowWordPressSyncModal(false)}
+              title="Sync WordPress CMS"
+              size="md"
+              variant={isLightTheme ? 'light' : 'dashboard'}
+              footer={(
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowWordPressSyncModal(false)}
+                    className={isLightTheme
+                      ? 'px-4 py-2 rounded-lg border border-[rgba(0,0,0,0.14)] bg-white font-mono text-[11px] text-[rgba(0,0,0,0.65)] hover:bg-[rgba(0,0,0,0.04)] transition-all'
+                      : 'px-4 py-2 rounded-lg border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.06)] font-mono text-[11px] text-[rgba(255,255,255,0.78)] hover:bg-[rgba(255,255,255,0.1)] transition-all'}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleConnectWordPress(true)}
+                    disabled={wpConnectLoading}
+                    className={isLightTheme
+                      ? 'px-4 py-2 rounded-lg border border-[rgba(14,200,198,0.55)] bg-[rgba(14,124,123,0.9)] font-mono text-[11px] font-bold text-white hover:bg-[rgba(14,124,123,1)] disabled:opacity-55 disabled:cursor-not-allowed transition-all'
+                      : 'px-4 py-2 rounded-lg border border-[rgba(14,200,198,0.55)] bg-[rgba(14,124,123,0.62)] font-mono text-[11px] font-bold text-[rgba(220,252,252,0.96)] hover:bg-[rgba(14,124,123,0.82)] disabled:opacity-55 disabled:cursor-not-allowed transition-all'}
+                  >
+                    {wpConnectLoading ? 'Syncing…' : 'Sync'}
+                  </button>
+                </>
+              )}
+            >
+              <div className="grid grid-cols-1 gap-2.5">
+                <label className={isLightTheme
+                  ? 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(0,0,0,0.58)]'
+                  : 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(182,212,228,0.74)]'}>WP_API_URL</label>
+                <input
+                  value={wpApiUrl}
+                  onChange={(e) => setWpApiUrl(e.target.value)}
+                  placeholder="https://your-site.com"
+                  className={isLightTheme
+                    ? 'rounded-lg border border-[rgba(0,0,0,0.14)] bg-white px-3 py-2 font-mono text-[12px] text-[rgba(0,0,0,0.85)] placeholder:text-[rgba(0,0,0,0.35)] focus:outline-none focus:border-[rgba(14,124,123,0.55)]'
+                    : 'rounded-lg border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.06)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]'}
+                />
+
+                <label className={isLightTheme
+                  ? 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(0,0,0,0.58)]'
+                  : 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(182,212,228,0.74)]'}>WP_USER</label>
+                <input
+                  value={wpUser}
+                  onChange={(e) => setWpUser(e.target.value)}
+                  placeholder="wordpress username"
+                  className={isLightTheme
+                    ? 'rounded-lg border border-[rgba(0,0,0,0.14)] bg-white px-3 py-2 font-mono text-[12px] text-[rgba(0,0,0,0.85)] placeholder:text-[rgba(0,0,0,0.35)] focus:outline-none focus:border-[rgba(14,124,123,0.55)]'
+                    : 'rounded-lg border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.06)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]'}
+                />
+
+                <label className={isLightTheme
+                  ? 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(0,0,0,0.58)]'
+                  : 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(182,212,228,0.74)]'}>WP_APP_PASSWORD</label>
+                <input
+                  type="password"
+                  value={wpAppPassword}
+                  onChange={(e) => setWpAppPassword(e.target.value)}
+                  placeholder="xxxx xxxx xxxx"
+                  className={isLightTheme
+                    ? 'rounded-lg border border-[rgba(0,0,0,0.14)] bg-white px-3 py-2 font-mono text-[12px] text-[rgba(0,0,0,0.85)] placeholder:text-[rgba(0,0,0,0.35)] focus:outline-none focus:border-[rgba(14,124,123,0.55)]'
+                    : 'rounded-lg border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.06)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]'}
+                />
+
+                <div className={isLightTheme
+                  ? 'mt-1 text-[11px] text-[rgba(0,0,0,0.55)] font-mono'
+                  : 'mt-1 text-[11px] text-[rgba(176,201,216,0.7)] font-mono'}>
+                  Click Sync to verify credentials and connect WordPress.
+                </div>
+              </div>
+            </Modal>
 
             {/* ── SETTINGS: SECURITY ───────────────────────────────────────── */}
             {activeTab === 'settings' && activeSettingsLever === 'security' && (
@@ -4066,6 +4401,133 @@ export default function DashboardClient() {
           </div>
         </div>
       </div>
+
+      {/* ── Edit Social Post Modal — rendered via portal to document.body ── */}
+      {editSocialPost !== null && typeof document !== 'undefined' && createPortal(
+        <div
+          aria-hidden="false"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            boxSizing: 'border-box',
+          }}
+        >
+          {/* Overlay */}
+          <div
+            aria-hidden="true"
+            onClick={closeSocialEdit}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(1, 4, 12, 0.86)',
+              backdropFilter: 'blur(4px)',
+              WebkitBackdropFilter: 'blur(4px)',
+            }}
+          />
+
+          {/* Dialog — compact 520px card */}
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit social post"
+            className="relative z-10 flex flex-col rounded-2xl border border-[rgba(14,124,123,0.4)] shadow-[0_20px_56px_rgba(0,0,0,0.8),0_0_24px_rgba(14,124,123,0.2),inset_0_1px_0_rgba(255,255,255,0.06)]"
+            style={{ background: '#050A14', width: '100%', maxWidth: '520px', maxHeight: '82vh' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3.5 border-b border-[rgba(255,255,255,0.07)]">
+              <div>
+                <div className="font-mono text-[9px] tracking-[2.4px] text-[rgba(14,200,198,0.65)] uppercase mb-1">
+                  Edit Post
+                </div>
+                <div className="text-[rgba(220,236,255,0.93)] font-semibold text-[13px] leading-tight">
+                  {editSocialPost.channel}
+                  <span className="mx-1.5 text-[rgba(255,255,255,0.2)]">·</span>
+                  <span className="font-mono text-[11px] text-[rgba(14,200,198,0.78)]">{editSocialPost.handle}</span>
+                </div>
+              </div>
+              <button
+                onClick={closeSocialEdit}
+                aria-label="Close"
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.04)] text-[rgba(160,182,210,0.7)] hover:bg-[rgba(255,255,255,0.1)] hover:text-white transition-all duration-150"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Meta strip */}
+            <div className="px-5 pt-2.5 pb-1.5 flex items-center gap-2 flex-wrap border-b border-[rgba(255,255,255,0.04)]">
+              {editSocialPost.bias !== null && (
+                <span className="rounded-full border border-[rgba(14,200,198,0.22)] bg-[rgba(14,200,198,0.07)] px-2 py-0.5 font-mono text-[8.5px] tracking-[0.8px] text-[rgba(14,200,198,0.78)] uppercase">
+                  BIAS {editSocialPost.bias}
+                </span>
+              )}
+              <span className="rounded-full border border-[rgba(210,228,255,0.15)] bg-[rgba(210,228,255,0.04)] px-2 py-0.5 font-mono text-[8.5px] tracking-[0.8px] text-[rgba(170,192,235,0.6)] uppercase">
+                {editSocialPost.model}
+              </span>
+              <span className="font-mono text-[8.5px] text-[rgba(190,208,240,0.3)]">
+                {editSocialPost.generatedAgo}
+              </span>
+            </div>
+
+            {/* Textarea */}
+            <div className="px-5 py-4 flex-1 overflow-auto">
+              <div className="relative">
+                <textarea
+                  value={editSocialBody}
+                  onChange={e => setEditSocialBody(e.target.value)}
+                  rows={7}
+                  spellCheck
+                  autoFocus
+                  className="w-full resize-none rounded-xl border border-[rgba(14,124,123,0.3)] bg-[rgba(2,6,16,0.97)] px-4 py-3 font-mono text-[11px] leading-[1.8] text-[rgba(215,232,255,0.84)] placeholder-[rgba(130,155,190,0.32)] outline-none focus:border-[rgba(14,200,198,0.5)] focus:ring-1 focus:ring-[rgba(14,200,198,0.18)] transition-all duration-150"
+                  placeholder="Write your LinkedIn post here…"
+                  aria-label="Post content"
+                />
+                <div className="absolute bottom-2 right-3 font-mono text-[8.5px] text-[rgba(130,155,190,0.38)]">
+                  {editSocialBody.trim().length}
+                </div>
+              </div>
+              <p className="mt-1.5 font-mono text-[8.5px] text-[rgba(130,155,190,0.35)] leading-relaxed">
+                Blank line = new paragraph · edits update the card instantly
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2.5 px-5 py-3.5 border-t border-[rgba(255,255,255,0.07)]">
+              <button
+                onClick={closeSocialEdit}
+                disabled={editSocialSaving}
+                className="rounded-full border border-[rgba(210,228,255,0.2)] bg-transparent px-4 py-1.5 text-[10.5px] font-medium text-[rgba(195,215,245,0.68)] hover:bg-[rgba(210,228,255,0.08)] hover:text-white transition-all duration-150 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void handleEditSocialSave(); }}
+                disabled={editSocialSaving || !editSocialBody.trim()}
+                aria-busy={editSocialSaving}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(14,200,198,0.52)] bg-[rgba(14,155,152,0.28)] px-5 py-1.5 text-[10.5px] font-semibold text-[rgba(20,224,220,0.96)] shadow-[0_0_12px_rgba(14,180,176,0.2)] hover:bg-[rgba(14,155,152,0.44)] hover:border-[rgba(14,200,198,0.76)] hover:shadow-[0_0_18px_rgba(14,180,176,0.35)] transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {editSocialSaving && (
+                  <span aria-hidden="true" className="h-3 w-3 rounded-full border border-current border-t-transparent animate-spin" />
+                )}
+                {editSocialSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
 
       <ToastContainer toasts={toast.toasts} onDismiss={toast.dismiss} />
     </div>

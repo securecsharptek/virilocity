@@ -32,8 +32,18 @@ const { mockedAuth } = vi.hoisted(() => ({
   mockedAuth: vi.fn(),
 }));
 
+const { mockLinkedInPostText } = vi.hoisted(() => ({
+  mockLinkedInPostText: vi.fn(),
+}));
+
 vi.mock('@/auth', () => ({
   auth: mockedAuth,
+}));
+
+vi.mock('../../lib/integrations/linkedin', () => ({
+  LinkedInPoster: {
+    postText: mockLinkedInPostText,
+  },
 }));
 // ── Mock auth middleware (vi.mock is hoisted by Vitest) ───────────────────────
 vi.mock('../../lib/auth/middleware', () => ({
@@ -64,7 +74,8 @@ vi.mock('../../lib/auth/middleware', () => ({
       tenant_suspended:   [403, { error: 'Account suspended' }],
       insufficient_tier:  [403, { error: 'Requires upgrade' }],
     };
-    return map[e?.type] ?? [500, { error: 'Internal error' }];
+    const key = e?.type ?? '';
+    return map[key] ?? [500, { error: 'Internal error' }];
   },
 }));
 
@@ -373,6 +384,9 @@ describe('GET/POST /dashboard/data', () => {
   beforeEach(() => {
     resetTenantDashboardStateMemory();
     mockedAuth.mockReset();
+    mockLinkedInPostText.mockReset();
+    delete process.env['LINKEDIN_ACCESS_TENANT_TEST_001'];
+    delete process.env['LINKEDIN_MEMBER_ID_TENANT_TEST_001'];
   });
 
   it('GET returns 401 when session is missing', async () => {
@@ -459,5 +473,67 @@ describe('GET/POST /dashboard/data', () => {
     const resumeData = resumeBody['data'] as Record<string, unknown>;
     const resumeAutopilot = resumeData['autopilot'] as Record<string, unknown>;
     expect(resumeAutopilot['paused']).toBe(false);
+  });
+
+  it('POST publishSocialPost validates required post body', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+
+    const req = makeDashboardReq({
+      action: 'publishSocialPost',
+      postChannel: 'linkedin',
+      postBody: '',
+    });
+
+    const res = await dashboardDataPost(req);
+    expect(res.status).toBe(400);
+  });
+
+  it('POST publishSocialPost returns 409 when LinkedIn is not connected', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+
+    const req = makeDashboardReq({
+      action: 'publishSocialPost',
+      postChannel: 'linkedin',
+      postBody: 'Test post body for LinkedIn.',
+    });
+
+    const res = await dashboardDataPost(req);
+    expect(res.status).toBe(409);
+
+    const body = await json(res);
+    expect(String(body['error'])).toContain('LinkedIn is not connected');
+  });
+
+  it('POST publishSocialPost marks the post as posted and creates a replacement draft', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+    process.env['LINKEDIN_ACCESS_TENANT_TEST_001'] = 'linkedin-access-token';
+    process.env['LINKEDIN_MEMBER_ID_TENANT_TEST_001'] = 'linkedin-member-id';
+    mockLinkedInPostText.mockResolvedValueOnce({ id: 'li_post_123', status: 201 });
+
+    const req = makeDashboardReq({
+      action: 'publishSocialPost',
+      postId: '1',
+      postChannel: 'linkedin',
+      postBody: 'Test post body for LinkedIn.',
+    });
+
+    const res = await dashboardDataPost(req);
+    expect(res.status).toBe(200);
+
+    const body = await json(res);
+    const data = body['data'] as Record<string, unknown>;
+    const socialPosts = data['socialPosts'] as Array<Record<string, unknown>>;
+
+    expect(mockLinkedInPostText).toHaveBeenCalledWith({
+      accessToken: 'linkedin-access-token',
+      memberId: 'linkedin-member-id',
+      text: 'Test post body for LinkedIn.',
+    });
+    expect(socialPosts[0]?.['id']).not.toBe('1');
+    expect(socialPosts[0]?.['status']).toBe('draft');
+
+    const publishedPost = socialPosts.find(post => post['id'] === '1');
+    expect(publishedPost?.['status']).toBe('posted');
+    expect(publishedPost?.['primaryAction']).toBe('Posted');
   });
 });
