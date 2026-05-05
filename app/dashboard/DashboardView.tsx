@@ -16,6 +16,7 @@ import Modal from '../../components/ui/Modal';
 import SectionHeader from '../../components/ui/SectionHeader';
 import ActivityFeed, { type FeedItem } from '../../components/ui/ActivityFeed';
 import ToastContainer, { useToast } from '../../components/ui/Toast';
+import CMSConnections from './settings/cms/CMSConnections';
 
 const FEED_ITEMS: FeedItem[] = [
   {
@@ -797,18 +798,6 @@ export default function DashboardClient() {
   const [editSocialPost, setEditSocialPost] = useState<SocialPost | null>(null);
   const [editSocialBody, setEditSocialBody] = useState('');
   const [editSocialSaving, setEditSocialSaving] = useState(false);
-  const [cmsProvider, setCmsProvider] = useState<'shopify' | 'webflow'>('shopify');
-  const [cmsTitle, setCmsTitle] = useState('');
-  const [cmsSlug, setCmsSlug] = useState('');
-  const [cmsBody, setCmsBody] = useState('');
-  const [cmsPublishLoading, setCmsPublishLoading] = useState(false);
-  const [wpApiUrl, setWpApiUrl] = useState('');
-  const [wpUser, setWpUser] = useState('');
-  const [wpAppPassword, setWpAppPassword] = useState('');
-  const [wpConnectLoading, setWpConnectLoading] = useState(false);
-  const [cmsPlatformsLoading, setCmsPlatformsLoading] = useState(false);
-  const [cmsPlatforms, setCmsPlatforms] = useState<CmsPlatformConnection[]>([]);
-  const [showWordPressSyncModal, setShowWordPressSyncModal] = useState(false);
   
   // Agent filter state
   const [agentFilterStatus, setAgentFilterStatus] = useState<'all' | 'running' | 'idle' | 'hitl'>('all');
@@ -833,36 +822,13 @@ export default function DashboardClient() {
   const isAnalyticsConversionsLoading = dashboardLoadState === 'loading';
   const isAnalyticsAbTestsLoading = dashboardLoadState === 'loading';
 
-  const wordpressPlatform = cmsPlatforms.find(platform => platform.provider === 'wordpress');
-  const wordpressIntegration: IntegrationItem = {
-    icon: '📰',
-    name: 'WordPress CMS',
-    desc: 'Multi-CMS publishing target · WP REST API',
-    statusText: wordpressPlatform?.statusText ?? 'Not Configured',
-    dotColor: wordpressPlatform?.connected
-      ? 'rgba(30,165,80,1)'
-      : wordpressPlatform?.configured
-      ? 'rgba(201,168,76,1)'
-      : 'rgba(107,114,128,1)',
-    textColor: wordpressPlatform?.connected
-      ? 'rgba(30,165,80,0.85)'
-      : wordpressPlatform?.configured
-      ? 'rgba(201,168,76,0.8)'
-      : 'rgba(107,114,128,0.85)',
-  };
-
-  const integrationRows: IntegrationItem[] = [
-    ...integrations.filter(item => item.name !== 'WordPress CMS'),
-    wordpressIntegration,
-  ];
-
+  const integrationRows: IntegrationItem[] = integrations.filter(item => item.name !== 'WordPress CMS');
   const connectedIntegrations = integrationRows.filter(item => item.statusText.toLowerCase().startsWith('connected')).length;
   const isLightTheme = theme === 'light';
 
   const integrationActionConfig: Record<string, { label: string; href?: string; enabled: boolean }> = {
     'HubSpot CRM': { label: 'Sync HubSpot', href: '/api/hubspot/auth', enabled: true },
     'LinkedIn': { label: 'Connect LinkedIn', href: '/api/linkedin/auth', enabled: true },
-    'WordPress CMS': { label: 'Sync', enabled: true },
     'Microsoft 365': { label: 'Connect M365', enabled: false },
     'Anthropic Claude API': { label: 'Connect Claude', enabled: false },
     'Azure Key Vault': { label: 'Connect Vault', enabled: false },
@@ -887,12 +853,6 @@ export default function DashboardClient() {
   };
 
   const handleIntegrationAction = (name: string, statusText: string) => {
-    if (name === 'WordPress CMS') {
-      setShowWordPressSyncModal(true);
-      void refreshCmsPlatforms(true);
-      return;
-    }
-
     const cfg = getIntegrationActionState(name, statusText);
     if (!cfg.enabled || !cfg.href) {
       toast.info(`${name} integration action will be enabled in next step.`);
@@ -1120,8 +1080,19 @@ export default function DashboardClient() {
     const hubspot = params.get('hubspot');
     const linkedin = params.get('linkedin');
     const reason = params.get('reason');
+    const tab = params.get('tab');
+    const lever = params.get('lever');
 
-    if (!hubspot && !linkedin) return;
+    const hasOauthStatus = Boolean(hubspot || linkedin);
+    const hasNavigationHint = Boolean(tab || lever);
+    if (!hasOauthStatus && !hasNavigationHint) return;
+
+    if (tab === 'settings') {
+      setActiveTab('settings');
+      if (lever === 'billing' || lever === 'team' || lever === 'integrations' || lever === 'cms' || lever === 'security') {
+        setActiveSettingsLever(lever);
+      }
+    }
 
     if (hubspot === 'connected') {
       toast.success('HubSpot connected successfully.');
@@ -1144,6 +1115,8 @@ export default function DashboardClient() {
     params.delete('hubspot');
     params.delete('linkedin');
     params.delete('reason');
+    params.delete('tab');
+    params.delete('lever');
     const next = params.toString();
     const cleanedUrl = `${window.location.pathname}${next ? `?${next}` : ''}`;
     window.history.replaceState({}, '', cleanedUrl);
@@ -1234,139 +1207,6 @@ export default function DashboardClient() {
       result?: { succeeded: number; totalTasks: number };
     };
   };
-
-  const handleCmsPublish = async () => {
-    if (!cmsTitle.trim() || !cmsSlug.trim() || !cmsBody.trim()) {
-      toast.error('Title, slug, and content are required for CMS publish.');
-      return;
-    }
-
-    setCmsPublishLoading(true);
-    try {
-      const res = await fetch('/dashboard/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'publishCms',
-          provider: cmsProvider,
-          title: cmsTitle.trim(),
-          slug: cmsSlug.trim(),
-          htmlBody: cmsBody.trim(),
-          status: 'published',
-        }),
-      });
-
-      const payload = (await res.json().catch(() => null)) as {
-        cms?: { provider?: string; itemId?: string };
-        data?: DashboardApiResponse;
-        error?: { provider?: string; code?: string; message?: string } | string;
-      } | null;
-
-      if (!res.ok) {
-        const msg = typeof payload?.error === 'string'
-          ? payload.error
-          : payload?.error?.message ?? 'CMS publish failed';
-        throw new Error(msg);
-      }
-
-      if (payload?.data) applyDashboardData(payload.data);
-      toast.success(`${cmsProvider} publish succeeded${payload?.cms?.itemId ? ` (id: ${payload.cms.itemId})` : ''}.`);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'CMS publish failed';
-      toast.error(msg);
-    } finally {
-      setCmsPublishLoading(false);
-    }
-  };
-
-  const refreshCmsPlatforms = async (silent = false) => {
-    if (!silent) {
-      setCmsPlatformsLoading(true);
-    }
-
-    try {
-      const res = await fetch('/api/cms/platforms', { cache: 'no-store' });
-      const payload = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        platforms?: CmsPlatformConnection[];
-        error?: { message?: string } | string;
-      } | null;
-
-      if (!res.ok) {
-        const msg = typeof payload?.error === 'string'
-          ? payload.error
-          : payload?.error?.message ?? 'Failed to load CMS platforms';
-        throw new Error(msg);
-      }
-
-      if (Array.isArray(payload?.platforms)) {
-        setCmsPlatforms(payload.platforms);
-      }
-    } catch (error) {
-      if (!silent) {
-        const msg = error instanceof Error ? error.message : 'Failed to load CMS platforms';
-        toast.error(msg);
-      }
-    } finally {
-      if (!silent) {
-        setCmsPlatformsLoading(false);
-      }
-    }
-  };
-
-  const handleConnectWordPress = async (closeOnSuccess = false) => {
-    if (!wpApiUrl.trim() || !wpUser.trim() || !wpAppPassword.trim()) {
-      toast.error('WP_API_URL, WP_USER, and WP_APP_PASSWORD are required.');
-      return;
-    }
-
-    setWpConnectLoading(true);
-    try {
-      const res = await fetch('/api/cms/platforms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: 'wordpress',
-          WP_API_URL: wpApiUrl.trim(),
-          WP_USER: wpUser.trim(),
-          WP_APP_PASSWORD: wpAppPassword.trim(),
-        }),
-      });
-
-      const payload = (await res.json().catch(() => null)) as {
-        connected?: boolean;
-        error?: { message?: string } | string;
-      } | null;
-
-      if (!res.ok || payload?.connected !== true) {
-        const msg = typeof payload?.error === 'string'
-          ? payload.error
-          : payload?.error?.message ?? 'WordPress connection failed';
-        throw new Error(msg);
-      }
-
-      toast.success('WordPress connected successfully.');
-      setWpAppPassword('');
-      await refreshCmsPlatforms(true);
-      if (closeOnSuccess) {
-        setShowWordPressSyncModal(false);
-      }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'WordPress connection failed';
-      toast.error(msg);
-    } finally {
-      setWpConnectLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (
-      activeTab === 'settings'
-      && activeSettingsLever === 'integrations'
-    ) {
-      void refreshCmsPlatforms(false);
-    }
-  }, [activeTab, activeSettingsLever]);
 
   const handleRunAutopilot = async () => {
     try {
@@ -1750,6 +1590,7 @@ export default function DashboardClient() {
                 <Lever label="Billing"      active={activeSettingsLever === 'billing'}      onClick={() => setActiveSettingsLever('billing')} />
                 <Lever label="Team"         active={activeSettingsLever === 'team'}         onClick={() => setActiveSettingsLever('team')} />
                 <Lever label="Integrations" active={activeSettingsLever === 'integrations'} onClick={() => setActiveSettingsLever('integrations')} />
+                <Lever label="CMS"          active={activeSettingsLever === 'cms'}          onClick={() => setActiveSettingsLever('cms')} />
                 <Lever label="Security"     active={activeSettingsLever === 'security'}     onClick={() => setActiveSettingsLever('security')} />
               </div>
             </div>
@@ -4176,49 +4017,6 @@ export default function DashboardClient() {
                   <span className="px-2.5 py-[3px] rounded-[20px] bg-[rgba(14,124,123,0.12)] border border-[rgba(14,124,123,0.28)] font-mono text-[8.5px] text-[rgba(14,200,198,0.7)] tracking-[1px]">{connectedIntegrations}/{integrationRows.length} Connected</span>
                 </div>
 
-                <GlassCard className="p-4 mb-3.5 border-[rgba(14,124,123,0.28)]">
-                  <div className="font-mono text-[9px] tracking-[2px] text-[rgba(14,200,198,0.6)] uppercase mb-3">CMS Publish (Shopify/Webflow)</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-2.5">
-                    <select
-                      value={cmsProvider}
-                      onChange={(e) => setCmsProvider(e.target.value as 'shopify' | 'webflow')}
-                      className="rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                    >
-                      <option value="shopify">Shopify</option>
-                      <option value="webflow">Webflow</option>
-                    </select>
-                    <input
-                      value={cmsTitle}
-                      onChange={(e) => setCmsTitle(e.target.value)}
-                      placeholder="Post title"
-                      className="rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2.5 mb-2.5">
-                    <input
-                      value={cmsSlug}
-                      onChange={(e) => setCmsSlug(e.target.value)}
-                      placeholder="post-slug"
-                      className="rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleCmsPublish()}
-                      disabled={cmsPublishLoading}
-                      className="px-4 py-2 rounded-lg border border-[rgba(14,200,198,0.45)] bg-[rgba(14,124,123,0.3)] font-mono text-[11px] font-bold text-[rgba(14,200,198,1)] hover:bg-[rgba(14,124,123,0.5)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    >
-                      {cmsPublishLoading ? 'Publishing…' : `Publish to ${cmsProvider === 'shopify' ? 'Shopify' : 'Webflow'}`}
-                    </button>
-                  </div>
-                  <textarea
-                    value={cmsBody}
-                    onChange={(e) => setCmsBody(e.target.value)}
-                    rows={5}
-                    placeholder="<h1>Your content</h1><p>Write or paste HTML content...</p>"
-                    className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                  />
-                </GlassCard>
-
                 <GlassCard className="p-4">
                   {integrationRows.map(({ icon, name, desc, statusText, dotColor, textColor }, idx) => {
                     const actionState = getIntegrationActionState(name, statusText);
@@ -4237,7 +4035,7 @@ export default function DashboardClient() {
                         <IntegrationActionButton
                           label={actionState.label}
                           onClick={() => handleIntegrationAction(name, statusText)}
-                          loading={name === 'WordPress CMS' ? wpConnectLoading : integrationActionLoading === name}
+                          loading={integrationActionLoading === name}
                           disabled={!actionState.enabled}
                         />
                         <div className="flex items-center gap-[5px] font-mono text-[9px]" style={{ color: textColor }}>
@@ -4251,81 +4049,9 @@ export default function DashboardClient() {
               </div>
             )}
 
-            <Modal
-              open={showWordPressSyncModal}
-              onClose={() => setShowWordPressSyncModal(false)}
-              title="Sync WordPress CMS"
-              size="md"
-              variant={isLightTheme ? 'light' : 'dashboard'}
-              footer={(
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowWordPressSyncModal(false)}
-                    className={isLightTheme
-                      ? 'px-4 py-2 rounded-lg border border-[rgba(0,0,0,0.14)] bg-white font-mono text-[11px] text-[rgba(0,0,0,0.65)] hover:bg-[rgba(0,0,0,0.04)] transition-all'
-                      : 'px-4 py-2 rounded-lg border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.06)] font-mono text-[11px] text-[rgba(255,255,255,0.78)] hover:bg-[rgba(255,255,255,0.1)] transition-all'}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleConnectWordPress(true)}
-                    disabled={wpConnectLoading}
-                    className={isLightTheme
-                      ? 'px-4 py-2 rounded-lg border border-[rgba(14,200,198,0.55)] bg-[rgba(14,124,123,0.9)] font-mono text-[11px] font-bold text-white hover:bg-[rgba(14,124,123,1)] disabled:opacity-55 disabled:cursor-not-allowed transition-all'
-                      : 'px-4 py-2 rounded-lg border border-[rgba(14,200,198,0.55)] bg-[rgba(14,124,123,0.62)] font-mono text-[11px] font-bold text-[rgba(220,252,252,0.96)] hover:bg-[rgba(14,124,123,0.82)] disabled:opacity-55 disabled:cursor-not-allowed transition-all'}
-                  >
-                    {wpConnectLoading ? 'Syncing…' : 'Sync'}
-                  </button>
-                </>
-              )}
-            >
-              <div className="grid grid-cols-1 gap-2.5">
-                <label className={isLightTheme
-                  ? 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(0,0,0,0.58)]'
-                  : 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(182,212,228,0.74)]'}>WP_API_URL</label>
-                <input
-                  value={wpApiUrl}
-                  onChange={(e) => setWpApiUrl(e.target.value)}
-                  placeholder="https://your-site.com"
-                  className={isLightTheme
-                    ? 'rounded-lg border border-[rgba(0,0,0,0.14)] bg-white px-3 py-2 font-mono text-[12px] text-[rgba(0,0,0,0.85)] placeholder:text-[rgba(0,0,0,0.35)] focus:outline-none focus:border-[rgba(14,124,123,0.55)]'
-                    : 'rounded-lg border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.06)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]'}
-                />
-
-                <label className={isLightTheme
-                  ? 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(0,0,0,0.58)]'
-                  : 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(182,212,228,0.74)]'}>WP_USER</label>
-                <input
-                  value={wpUser}
-                  onChange={(e) => setWpUser(e.target.value)}
-                  placeholder="wordpress username"
-                  className={isLightTheme
-                    ? 'rounded-lg border border-[rgba(0,0,0,0.14)] bg-white px-3 py-2 font-mono text-[12px] text-[rgba(0,0,0,0.85)] placeholder:text-[rgba(0,0,0,0.35)] focus:outline-none focus:border-[rgba(14,124,123,0.55)]'
-                    : 'rounded-lg border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.06)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]'}
-                />
-
-                <label className={isLightTheme
-                  ? 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(0,0,0,0.58)]'
-                  : 'font-mono text-[10px] uppercase tracking-[1px] text-[rgba(182,212,228,0.74)]'}>WP_APP_PASSWORD</label>
-                <input
-                  type="password"
-                  value={wpAppPassword}
-                  onChange={(e) => setWpAppPassword(e.target.value)}
-                  placeholder="xxxx xxxx xxxx"
-                  className={isLightTheme
-                    ? 'rounded-lg border border-[rgba(0,0,0,0.14)] bg-white px-3 py-2 font-mono text-[12px] text-[rgba(0,0,0,0.85)] placeholder:text-[rgba(0,0,0,0.35)] focus:outline-none focus:border-[rgba(14,124,123,0.55)]'
-                    : 'rounded-lg border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.06)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]'}
-                />
-
-                <div className={isLightTheme
-                  ? 'mt-1 text-[11px] text-[rgba(0,0,0,0.55)] font-mono'
-                  : 'mt-1 text-[11px] text-[rgba(176,201,216,0.7)] font-mono'}>
-                  Click Sync to verify credentials and connect WordPress.
-                </div>
-              </div>
-            </Modal>
+            {activeTab === 'settings' && activeSettingsLever === 'cms' && (
+              <CMSConnections embedded />
+            )}
 
             {/* ── SETTINGS: SECURITY ───────────────────────────────────────── */}
             {activeTab === 'settings' && activeSettingsLever === 'security' && (

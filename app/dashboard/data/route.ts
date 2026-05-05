@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { runAutopilot, AUTOPILOT_TASKS as ENGINE_AUTOPILOT_TASKS } from '../../../lib/agents/autopilot';
+import { runAgentCall } from '../../../lib/ai/client';
 import { HubSpotContacts } from '../../../lib/integrations/hubspot';
 import { getTenantDashboardState, setTenantDashboardState } from '../../../lib/db/dashboard-state';
 import type { Tenant, Tier, TenantModel, AgentType } from '../../../lib/types/index';
@@ -1362,7 +1363,7 @@ export async function POST(req: NextRequest) {
     title?: string;
     category?: string;
     content?: string;
-    provider?: 'shopify' | 'webflow';
+    provider?: 'shopify' | 'webflow' | 'wordpress' | 'hubspot';
     slug?: string;
     htmlBody?: string;
     status?: 'draft' | 'published';
@@ -1371,6 +1372,7 @@ export async function POST(req: NextRequest) {
     postBody?: string;
     postId?: string;
     postContent?: string[];
+    prompt?: string;
   };
 
   if (body.action === 'runAutopilot') {
@@ -1581,6 +1583,206 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, data: toResponse(store) });
   }
 
+  const stripCodeFence = (value: string): string => value
+    .replace(/^\s*```(?:json|html|markdown)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+
+  const normalizeGeneratedJson = (value: string): string => stripCodeFence(value)
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim();
+
+  const parseGeneratedDraft = (value: string): Record<string, unknown> => {
+    const normalized = normalizeGeneratedJson(value);
+    const candidates = [normalized];
+    const match = normalized.match(/\{[\s\S]*\}/);
+    if (match && match[0] !== normalized) candidates.push(match[0]);
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+    }
+
+    const source = candidates[candidates.length - 1] ?? normalized;
+    const extracted: Record<string, unknown> = {};
+
+    const titleMatch = source.match(/"title"\s*:\s*"([\s\S]*?)"\s*,\s*"slug"/i);
+    if (titleMatch?.[1]) extracted['title'] = titleMatch[1].trim();
+
+    const slugMatch = source.match(/"slug"\s*:\s*"([\s\S]*?)"\s*,\s*"body"/i);
+    if (slugMatch?.[1]) extracted['slug'] = slugMatch[1].trim();
+
+    const bodyMatch = source.match(/"body"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"geoScore"|,\s*"[A-Za-z0-9_]+"|\s*\})/i);
+    if (bodyMatch?.[1]) {
+      extracted['body'] = bodyMatch[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .trim();
+    }
+
+    const geoScoreMatch = source.match(/"geoScore"\s*:\s*(\d{1,3})/i);
+    if (geoScoreMatch?.[1]) extracted['geoScore'] = Number(geoScoreMatch[1]);
+
+    if (Object.keys(extracted).length > 0) return extracted;
+
+    return {};
+  };
+
+  const trimWrappedText = (value: string): string => value.trim().replace(/^['"]+|['"]+$/g, '').trim();
+
+  const toSlug = (value: string): string => value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  const escapeHtml = (value: string): string => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const hasRichHtml = (value: string): boolean => /<(p|h[1-6]|ul|ol|li|blockquote|article|section|div)\b/i.test(value);
+
+  const renderTextBlock = (block: string): string => {
+    const lines = block.split(/\n/).map(line => line.trim()).filter(Boolean);
+    if (lines.length === 0) return '';
+
+    if (lines.every(line => /^[-*]\s+/.test(line))) {
+      const items = lines
+        .map(line => `<li>${escapeHtml(line.replace(/^[-*]\s+/, ''))}</li>`)
+        .join('');
+      return `<ul>${items}</ul>`;
+    }
+
+    const headingMatch = block.match(/^(?:#{1,3}\s+)?([^\n:.][^\n]{2,90})\s*:\s*\n?([\s\S]*)$/);
+    const headingTitle = headingMatch?.[1]?.trim();
+    const headingBody = headingMatch?.[2]?.trim();
+    if (headingTitle && headingBody) {
+      return `<h2>${escapeHtml(headingTitle)}</h2><p>${escapeHtml(headingBody)}</p>`;
+    }
+
+    const firstLine = lines[0];
+    if (lines.length === 1 && firstLine && (/^#{1,3}\s+/.test(firstLine) || /:$/.test(firstLine))) {
+      return `<h2>${escapeHtml(firstLine.replace(/^#{1,3}\s+/, '').replace(/:$/, '').trim())}</h2>`;
+    }
+
+    return `<p>${escapeHtml(lines.join(' '))}</p>`;
+  };
+
+  const normalizeBodyHtml = (value: string): string => {
+    const cleaned = trimWrappedText(stripCodeFence(value));
+    if (!cleaned) return '<p>No article content was generated.</p>';
+    if (hasRichHtml(cleaned)) return cleaned;
+
+    const markdownNormalized = cleaned
+      .replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
+      .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
+      .replace(/^#\s+(.+)$/gm, '<h2>$1</h2>');
+
+    const blocks = markdownNormalized
+      .split(/\n\s*\n/)
+      .map(block => block.trim())
+      .filter(Boolean)
+      .map(block => block.startsWith('<h2>') || block.startsWith('<h3>') ? block : renderTextBlock(block));
+
+    return blocks.join('\n');
+  };
+
+  const applyInlineStyle = (html: string, tag: string, style: string): string => html.replace(
+    new RegExp(`<${tag}(\\s[^>]*)?>`, 'gi'),
+    (match, attrs: string | undefined) => {
+      if (typeof attrs === 'string' && /\sstyle=/i.test(attrs)) return match;
+      return `<${tag}${attrs ?? ''} style="${style}">`;
+    },
+  );
+
+  const toPlainText = (value: string): string => value
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const renderCmsArticleTemplate = (title: string, rawBody: string): string => {
+    let articleHtml = normalizeBodyHtml(rawBody);
+    articleHtml = applyInlineStyle(articleHtml, 'h2', 'margin:32px 0 12px;font-size:30px;line-height:1.2;color:#102132;font-weight:700;');
+    articleHtml = applyInlineStyle(articleHtml, 'h3', 'margin:24px 0 10px;font-size:24px;line-height:1.3;color:#16324a;font-weight:700;');
+    articleHtml = applyInlineStyle(articleHtml, 'p', 'margin:0 0 18px;font-size:18px;line-height:1.85;color:#334155;');
+    articleHtml = applyInlineStyle(articleHtml, 'ul', 'margin:0 0 22px;padding-left:24px;color:#334155;');
+    articleHtml = applyInlineStyle(articleHtml, 'ol', 'margin:0 0 22px;padding-left:24px;color:#334155;');
+    articleHtml = applyInlineStyle(articleHtml, 'li', 'margin:0 0 10px;font-size:18px;line-height:1.75;');
+    articleHtml = applyInlineStyle(articleHtml, 'blockquote', 'margin:24px 0;padding:18px 22px;border-left:4px solid #0f766e;background:#f4fbfa;color:#16324a;font-style:italic;border-radius:0 16px 16px 0;');
+    articleHtml = applyInlineStyle(articleHtml, 'a', 'color:#0f766e;text-decoration:underline;');
+
+    const preview = escapeHtml(toPlainText(articleHtml).slice(0, 180));
+
+    return [
+      '<article style="max-width:820px;margin:0 auto;padding:28px 24px;border-radius:28px;background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);box-shadow:0 18px 46px rgba(15,23,42,0.08);">',
+      '<section style="margin:0 0 28px;padding:28px;border-radius:24px;background:linear-gradient(135deg,#0f766e 0%,#1d4ed8 100%);color:#f8fafc;">',
+      '<div style="display:inline-block;margin-bottom:12px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,0.16);font:700 12px/1.2 Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;">Virilocity AI Article</div>',
+      `<p style="margin:0;font:400 18px/1.75 Georgia,serif;color:rgba(248,250,252,0.92);">${preview || escapeHtml(title)}</p>`,
+      '</section>',
+      `<section style="font-family:Georgia,\'Times New Roman\',serif;">${articleHtml}</section>`,
+      '</article>',
+    ].join('');
+  };
+
+  if (body.action === 'generateCmsDraft') {
+    const topic = (body.prompt ?? body.title ?? '').toString().trim();
+    if (!topic) {
+      return NextResponse.json({ error: 'prompt (topic) is required' }, { status: 400 });
+    }
+
+    const systemPrompt = `You are a professional SEO content writer. Generate a blog post for the given topic.
+Return ONLY valid JSON in this exact shape — no markdown, no extra text:
+{
+  "title": "<SEO-optimised title>",
+  "slug": "<url-slug>",
+  "body": "<full HTML body — use <h2>, <p>, <ul><li> tags>",
+  "geoScore": <integer 0-100>
+}`;
+    const userPrompt = `Topic: ${topic}`;
+
+    try {
+      const result = await runAgentCall('geo_content_generator', tenant.tier as Tier, systemPrompt, userPrompt);
+      const parsed = parseGeneratedDraft(result.output);
+      const title = typeof parsed['title'] === 'string' && trimWrappedText(parsed['title'])
+        ? trimWrappedText(parsed['title'])
+        : topic;
+      const slug = typeof parsed['slug'] === 'string' && trimWrappedText(parsed['slug'])
+        ? toSlug(trimWrappedText(parsed['slug']))
+        : toSlug(topic);
+      const rawBody = typeof parsed['body'] === 'string' && trimWrappedText(parsed['body'])
+        ? trimWrappedText(parsed['body'])
+        : result.output;
+
+      return NextResponse.json({
+        ok: true,
+        generatedCmsDraft: {
+          title,
+          slug,
+          body: renderCmsArticleTemplate(title, rawBody),
+          geoScore: Number.isFinite(Number(parsed['geoScore'])) ? Number(parsed['geoScore']) : null,
+          model: result.model,
+          agentType: 'geo_content_generator',
+        },
+        data: toResponse(store),
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'AI generation failed' },
+        { status: 500 },
+      );
+    }
+  }
+
   if (body.action === 'publishCms') {
     const provider = body.provider;
     const title = body.title?.trim() ?? '';
@@ -1588,8 +1790,9 @@ export async function POST(req: NextRequest) {
     const htmlBody = body.htmlBody?.trim() ?? '';
     const status = body.status ?? 'published';
 
-    if (!provider || (provider !== 'shopify' && provider !== 'webflow')) {
-      return NextResponse.json({ error: 'provider must be one of: shopify, webflow' }, { status: 400 });
+    const ALLOWED_CMS = ['shopify', 'webflow', 'wordpress', 'hubspot'] as const;
+    if (!provider || !(ALLOWED_CMS as readonly string[]).includes(provider)) {
+      return NextResponse.json({ error: 'provider must be one of: shopify, webflow, wordpress, hubspot' }, { status: 400 });
     }
     if (!title || !slug || !htmlBody) {
       return NextResponse.json({ error: 'title, slug, and htmlBody are required' }, { status: 400 });

@@ -1,6 +1,6 @@
 import { getSecret, getSecrets, setSecret } from '../../auth/keyvault';
 
-export type CMSPlatformProvider = 'wordpress' | 'shopify' | 'webflow';
+export type CMSPlatformProvider = 'wordpress' | 'shopify' | 'webflow' | 'hubspot';
 
 export interface WordPressCredentials {
   apiUrl: string;
@@ -170,12 +170,36 @@ const getWebflowStatus = async (tenantId: string): Promise<CMSPlatformStatus> =>
   };
 };
 
+const getHubSpotStatus = async (tenantId: string): Promise<CMSPlatformStatus> => {
+  const oauthAccess = await getSecret(`hubspot-access-${tenantId}`).catch(() => '');
+  const privateToken = await getSecret(`hs-cms-token-${tenantId}`).catch(() => '');
+  const configured = Boolean(oauthAccess || privateToken);
+
+  if (!configured) {
+    return {
+      provider: 'hubspot',
+      configured: false,
+      connected: false,
+      statusText: 'Not Configured',
+      details: 'Connect HubSpot via OAuth or add a private app token',
+    };
+  }
+
+  return {
+    provider: 'hubspot',
+    configured: true,
+    connected: true,
+    statusText: oauthAccess ? 'Connected via OAuth' : 'Configured',
+  };
+};
+
 export const getCmsPlatformsStatus = async (tenantId: string): Promise<CMSPlatformStatus[]> => {
-  const [wordpress, shopify, webflow] = await Promise.all([
+  const [wordpress, shopify, webflow, hubspot] = await Promise.all([
     getWordPressStatus(tenantId),
     getShopifyStatus(tenantId),
     getWebflowStatus(tenantId),
+    getHubSpotStatus(tenantId),
   ]);
 
-  return [wordpress, shopify, webflow];
+  return [wordpress, shopify, webflow, hubspot];
 };

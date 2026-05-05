@@ -402,6 +402,14 @@ describe('UT-12 | HubSpot integration', () => {
   it('getAuthUrl contains hubspot.com/oauth',   () => expect(HubSpotAuth.getAuthUrl('t1')).toContain('hubspot.com/oauth'));
   it('getAuthUrl contains tenantId in state',   () => expect(HubSpotAuth.getAuthUrl('tenant-123')).toContain('state=tenant-123'));
   it('getAuthUrl contains scope parameter',     () => expect(HubSpotAuth.getAuthUrl('t1')).toContain('scope='));
+  it('getAuthUrl excludes content scope by default', () => {
+    const scope = new URL(HubSpotAuth.getAuthUrl('t1')).searchParams.get('scope') ?? '';
+    expect(scope).not.toContain('content');
+  });
+  it('getAuthUrl excludes timeline scope by default', () => {
+    const scope = new URL(HubSpotAuth.getAuthUrl('t1')).searchParams.get('scope') ?? '';
+    expect(scope).not.toContain('timeline');
+  });
   it('getAuthUrl different tenants → different URLs', () =>
     expect(HubSpotAuth.getAuthUrl('t1')).not.toBe(HubSpotAuth.getAuthUrl('t2')));
 });

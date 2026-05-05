@@ -5,25 +5,34 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Tenant } from '../types/index';
 
-const HS_BASE       = 'https://api.hubapi.com';
-const SCOPES        = [
+const HS_BASE = 'https://api.hubapi.com';
+
+// Scopes must exactly match the Required scopes configured in the HubSpot app
+// (app-na2.hubspot.com/developer/.../auth → Scopes).
+// Keep content scope opt-in because many tenants only configure CRM scopes.
+const BASE_SCOPES = [
   'crm.objects.contacts.read',
   'crm.objects.contacts.write',
   'crm.objects.deals.read',
   'crm.objects.deals.write',
-  'timeline',
+  'oauth',
+];
+
+const SCOPES = [
+  ...BASE_SCOPES,
+  ...(process.env['HUBSPOT_REQUEST_CONTENT_SCOPE'] === 'true' ? ['content'] : []),
 ].join(' ');
 
 // ── OAuth2 ────────────────────────────────────────────────────────────────────
 export class HubSpotAuth {
   static getAuthUrl(tenantId: string): string {
-    const params = new URLSearchParams({
-      client_id:    process.env['HUBSPOT_CLIENT_ID'] ?? '',
-      redirect_uri: `${process.env['NEXT_PUBLIC_APP_URL'] ?? ''}/api/hubspot/callback`,
-      scope:        SCOPES,
-      state:        tenantId,
-    });
-    return `https://app.hubspot.com/oauth/authorize?${params}`;
+    // URLSearchParams encodes spaces as '+' but HubSpot OAuth requires '%20'.
+    // Build the query string manually to ensure correct encoding.
+    const clientId    = encodeURIComponent(process.env['HUBSPOT_CLIENT_ID'] ?? '');
+    const redirectUri = encodeURIComponent(`${process.env['NEXT_PUBLIC_APP_URL'] ?? ''}/api/hubspot/callback`);
+    const scope       = encodeURIComponent(SCOPES);   // spaces → %20
+    const state       = encodeURIComponent(tenantId);
+    return `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
   }
 
   static async exchangeCode(code: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {

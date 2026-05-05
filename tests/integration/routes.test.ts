@@ -36,6 +36,10 @@ const { mockLinkedInPostText } = vi.hoisted(() => ({
   mockLinkedInPostText: vi.fn(),
 }));
 
+const { mockRunAgentCall } = vi.hoisted(() => ({
+  mockRunAgentCall: vi.fn(),
+}));
+
 vi.mock('@/auth', () => ({
   auth: mockedAuth,
 }));
@@ -44,6 +48,10 @@ vi.mock('../../lib/integrations/linkedin', () => ({
   LinkedInPoster: {
     postText: mockLinkedInPostText,
   },
+}));
+
+vi.mock('../../lib/ai/client', () => ({
+  runAgentCall: mockRunAgentCall,
 }));
 // ── Mock auth middleware (vi.mock is hoisted by Vitest) ───────────────────────
 vi.mock('../../lib/auth/middleware', () => ({
@@ -385,6 +393,7 @@ describe('GET/POST /dashboard/data', () => {
     resetTenantDashboardStateMemory();
     mockedAuth.mockReset();
     mockLinkedInPostText.mockReset();
+    mockRunAgentCall.mockReset();
     delete process.env['LINKEDIN_ACCESS_TENANT_TEST_001'];
     delete process.env['LINKEDIN_MEMBER_ID_TENANT_TEST_001'];
   });
@@ -453,6 +462,52 @@ describe('GET/POST /dashboard/data', () => {
     const docs = data['kbDocuments'] as Array<Record<string, unknown>>;
 
     expect(docs.some(doc => doc['title'] === 'Integration Test KB Doc')).toBe(true);
+  });
+
+  it('POST generateCmsDraft normalizes malformed AI JSON into styled HTML', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+    mockRunAgentCall.mockResolvedValueOnce({
+      output: [
+        'I need a specific topic to write about. Since the topic provided is incomplete ("Generate a"), I\'ll create a general blog post about content generation.',
+        '',
+        '```json',
+        '{',
+        '“title”: “How to Generate a Winning Content Strategy: A Complete Guide for 2024”,',
+        '“slug”: “how-to-generate-a-winning-content-strategy-complete-guide”,',
+        '“body”: “Introduction: Why a Strong Content Strategy Matters',
+        '',
+        'In today\'s hyper-competitive digital landscape, a clear plan helps teams publish consistently.',
+        '',
+        '- Build authority',
+        '- Generate qualified leads”,',
+        '“geoScore”: 91',
+        '}',
+        '```',
+      ].join('\n'),
+      model: 'mock-model',
+    });
+
+    const res = await dashboardDataPost(makeDashboardReq({
+      action: 'generateCmsDraft',
+      prompt: 'Generate a',
+    }));
+
+    expect(res.status).toBe(200);
+
+    const body = await json(res);
+    const draft = body['generatedCmsDraft'] as Record<string, unknown>;
+    const html = String(draft['body'] ?? '');
+
+    expect(draft['title']).toBe('How to Generate a Winning Content Strategy: A Complete Guide for 2024');
+    expect(draft['slug']).toBe('how-to-generate-a-winning-content-strategy-complete-guide');
+    expect(draft['geoScore']).toBe(91);
+    expect(html).toContain('<article');
+    expect(html).toContain('Virilocity AI Article');
+    expect(html).toContain('<h2');
+    expect(html).toContain('<ul');
+    expect(html).not.toContain('{');
+    expect(html).not.toContain('```json');
+    expect(html).not.toContain('"title"');
   });
 
   it('POST pauseAutopilot then resumeAutopilot toggles pause state', async () => {
