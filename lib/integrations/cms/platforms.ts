@@ -173,7 +173,8 @@ const getWebflowStatus = async (tenantId: string): Promise<CMSPlatformStatus> =>
 const getHubSpotStatus = async (tenantId: string): Promise<CMSPlatformStatus> => {
   const oauthAccess = await getSecret(`hubspot-access-${tenantId}`).catch(() => '');
   const privateToken = await getSecret(`hs-cms-token-${tenantId}`).catch(() => '');
-  const configured = Boolean(oauthAccess || privateToken);
+  const token = (oauthAccess || privateToken).trim();
+  const configured = Boolean(token);
 
   if (!configured) {
     return {
@@ -185,12 +186,92 @@ const getHubSpotStatus = async (tenantId: string): Promise<CMSPlatformStatus> =>
     };
   }
 
-  return {
-    provider: 'hubspot',
-    configured: true,
-    connected: true,
-    statusText: oauthAccess ? 'Connected via OAuth' : 'Configured',
-  };
+  try {
+    const configuredBlogId = (
+      (process.env['HUBSPOT_BLOG_ID'] ?? '') ||
+      (await getSecret(`hs-blog-id-${tenantId}`))
+    ).trim();
+
+    const endpoint = configuredBlogId
+      ? `https://api.hubapi.com/cms/v3/blog-settings/settings/${encodeURIComponent(configuredBlogId)}`
+      : 'https://api.hubapi.com/cms/v3/blog-settings/settings?limit=1&archived=false';
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      cache: 'no-store',
+    });
+
+    if (response.ok) {
+      const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const results = Array.isArray(data['results']) ? (data['results'] as Array<Record<string, unknown>>) : [];
+      const blogId = configuredBlogId || String(results[0]?.['id'] ?? '');
+
+      if (blogId) {
+        await setSecret(`hs-blog-id-${tenantId}`, blogId);
+        return {
+          provider: 'hubspot',
+          configured: true,
+          connected: true,
+          statusText: oauthAccess ? 'Connected via OAuth' : 'Configured',
+        };
+      }
+
+      return {
+        provider: 'hubspot',
+        configured: true,
+        connected: false,
+        statusText: 'CMS setup required',
+        details: 'HubSpot is connected, but no HubSpot blog exists yet. Create a blog in HubSpot CMS, then save its Blog Settings ID.',
+      };
+    }
+
+    if (response.status === 404 && configuredBlogId) {
+      return {
+        provider: 'hubspot',
+        configured: true,
+        connected: false,
+        statusText: 'Blog not found',
+        details: 'The saved HubSpot Blog Settings ID was not found. Check the ID in HubSpot CMS settings.',
+      };
+    }
+
+    if (response.status === 401) {
+      return {
+        provider: 'hubspot',
+        configured: true,
+        connected: false,
+        statusText: 'Token expired',
+        details: 'HubSpot token is invalid or expired. Reconnect HubSpot.',
+      };
+    }
+
+    if (response.status === 403) {
+      return {
+        provider: 'hubspot',
+        configured: true,
+        connected: false,
+        statusText: 'CMS scope missing',
+        details: 'HubSpot permissions are insufficient for CMS publishing. Reconnect with content scope or add a CMS private app token.',
+      };
+    }
+
+    return {
+      provider: 'hubspot',
+      configured: true,
+      connected: false,
+      statusText: 'CMS check failed',
+      details: `HubSpot CMS check failed (${response.status})`,
+    };
+  } catch {
+    return {
+      provider: 'hubspot',
+      configured: true,
+      connected: false,
+      statusText: 'CMS check failed',
+      details: 'Network error while checking HubSpot CMS publishing readiness.',
+    };
+  }
 };
 
 export const getCmsPlatformsStatus = async (tenantId: string): Promise<CMSPlatformStatus[]> => {

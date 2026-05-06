@@ -10,7 +10,7 @@ const HS_BASE = 'https://api.hubapi.com';
 // Scopes must exactly match the Required scopes configured in the HubSpot app
 // (app-na2.hubspot.com/developer/.../auth → Scopes).
 // Keep content scope opt-in because many tenants only configure CRM scopes.
-const BASE_SCOPES = [
+const DEFAULT_BASE_SCOPES = [
   'crm.objects.contacts.read',
   'crm.objects.contacts.write',
   'crm.objects.deals.read',
@@ -18,19 +18,36 @@ const BASE_SCOPES = [
   'oauth',
 ];
 
-const SCOPES = [
-  ...BASE_SCOPES,
-  ...(process.env['HUBSPOT_REQUEST_CONTENT_SCOPE'] === 'true' ? ['content'] : []),
-].join(' ');
+const parseScopes = (raw: string): string[] => {
+  return raw
+    .split(/[\s,]+/)
+    .map(scope => scope.trim())
+    .filter(Boolean);
+};
+
+const getBaseScopes = (): string[] => {
+  const explicit = (process.env['HUBSPOT_OAUTH_SCOPES'] ?? '').trim();
+  if (explicit) return parseScopes(explicit);
+  return [...DEFAULT_BASE_SCOPES];
+};
+
+const buildScopes = (includeContentScope: boolean): string => {
+  const scopes = getBaseScopes();
+  if (includeContentScope && !scopes.includes('content')) {
+    scopes.push('content');
+  }
+  return scopes.join(' ');
+};
 
 // ── OAuth2 ────────────────────────────────────────────────────────────────────
 export class HubSpotAuth {
-  static getAuthUrl(tenantId: string): string {
+  static getAuthUrl(tenantId: string, options?: { includeContentScope?: boolean }): string {
     // URLSearchParams encodes spaces as '+' but HubSpot OAuth requires '%20'.
     // Build the query string manually to ensure correct encoding.
+    const includeContentScope = options?.includeContentScope === true;
     const clientId    = encodeURIComponent(process.env['HUBSPOT_CLIENT_ID'] ?? '');
     const redirectUri = encodeURIComponent(`${process.env['NEXT_PUBLIC_APP_URL'] ?? ''}/api/hubspot/callback`);
-    const scope       = encodeURIComponent(SCOPES);   // spaces → %20
+    const scope       = encodeURIComponent(buildScopes(includeContentScope));   // spaces → %20
     const state       = encodeURIComponent(tenantId);
     return `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
   }

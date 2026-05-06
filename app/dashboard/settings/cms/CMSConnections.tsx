@@ -176,15 +176,15 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
   const handlePrimaryAction = (platform: CMSPlatform) => {
     const status = platformState[platform].status;
 
-    // HubSpot uses OAuth and does not use credential modal fields.
+    // HubSpot starts with OAuth, then uses this modal for CMS-specific settings.
     if (platform === 'hubspot') {
-      if (status === 'connected') {
-        void runTest('hubspot');
+      if (status === 'connected' || status === 'error') {
+        setActiveModal('hubspot');
         return;
       }
 
       const returnTo = encodeURIComponent('/dashboard?tab=settings&lever=cms');
-      window.location.assign(`/api/hubspot/auth?returnTo=${returnTo}`);
+      window.location.assign(`/api/hubspot/auth?returnTo=${returnTo}&includeContentScope=true`);
       return;
     }
 
@@ -307,7 +307,11 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<CMSPlatform | ''>('');
   const [publishLoading, setPublishLoading] = useState(false);
-  const [publishResult, setPublishResult] = useState<{ ok: boolean; url?: string; itemId?: string; error?: string } | null>(null);
+  const [publishResult, setPublishResult] = useState<{ ok: boolean; url?: string; itemId?: string; error?: string; action?: 'hubspot-settings' } | null>(null);
+
+  const isHubSpotBlogSetupError = (message?: string): boolean => {
+    return Boolean(message && /HubSpot blog|Blog Settings ID|no HubSpot blog/i.test(message));
+  };
 
   const handleGenerateDraft = async () => {
     if (!topic.trim()) return;
@@ -349,6 +353,27 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
     setPublishLoading(true);
     setPublishResult(null);
     try {
+      if (selectedPlatform === 'hubspot') {
+        const tested = await testConnection('hubspot');
+        if (!tested.connected) {
+          const error = tested.error ?? 'HubSpot CMS is not ready for publishing.';
+          setPlatformState(prev => ({
+            ...prev,
+            hubspot: {
+              platform: 'hubspot',
+              status: 'error',
+              lastTested: new Date().toISOString(),
+              error,
+            },
+          }));
+          if (isHubSpotBlogSetupError(error)) {
+            setActiveModal('hubspot');
+          }
+          setPublishResult({ ok: false, error, action: isHubSpotBlogSetupError(error) ? 'hubspot-settings' : undefined });
+          return;
+        }
+      }
+
       const res = await fetch('/api/cms/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -366,7 +391,13 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
         error?: { message?: string };
       };
       if (!res.ok) {
-        throw new Error(json.error?.message ?? `Publish failed (${res.status})`);
+        const message = json.error?.message ?? `Publish failed (${res.status})`;
+        if (selectedPlatform === 'hubspot' && isHubSpotBlogSetupError(message)) {
+          setActiveModal('hubspot');
+          setPublishResult({ ok: false, error: message, action: 'hubspot-settings' });
+          return;
+        }
+        throw new Error(message);
       }
       setPublishResult({ ok: true, url: json.result?.url, itemId: json.result?.itemId });
     } catch (e) {
@@ -713,7 +744,18 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
                             )}
                           </>
                         ) : (
-                          <><span className="font-bold">✕ Publish failed:</span> {publishResult.error}</>
+                          <>
+                            <span className="font-bold">✕ Publish failed:</span> {publishResult.error}
+                            {publishResult.action === 'hubspot-settings' ? (
+                              <button
+                                type="button"
+                                onClick={() => setActiveModal('hubspot')}
+                                className="ml-3 rounded-lg border border-[rgba(252,165,165,0.45)] px-3 py-1 font-mono text-[11px] font-bold text-[rgba(255,220,220,0.96)] hover:bg-[rgba(252,165,165,0.12)] transition-colors"
+                              >
+                                Open HubSpot settings
+                              </button>
+                            ) : null}
+                          </>
                         )}
                       </motion.div>
                     )}

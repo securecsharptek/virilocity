@@ -89,7 +89,9 @@ const STATUS_CONFIG: Record<ConnectionStatus, { badge: string; dot: string; labe
   },
 };
 
-const buttonLabel = (status: ConnectionStatus): string => {
+const buttonLabel = (status: ConnectionStatus, platform: CMSPlatform): string => {
+  if (platform === 'hubspot' && status === 'connected') return 'CMS settings';
+  if (platform === 'hubspot' && status === 'error') return 'Fix settings';
   if (status === 'connected') return 'Test connection';
   if (status === 'error') return 'Reconnect';
   if (status === 'testing') return 'Testing…';
@@ -190,7 +192,7 @@ export default function PlatformCard({ state, loading = false, onPrimaryAction, 
               Testing…
             </span>
           ) : (
-            buttonLabel(state.status)
+            buttonLabel(state.status, state.platform)
           )}
         </motion.button>
 

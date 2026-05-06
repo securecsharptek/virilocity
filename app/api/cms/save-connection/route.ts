@@ -50,9 +50,10 @@ const SAVE_RULES: Record<CMSPlatform, SaveRule> = {
     },
   },
   hubspot: {
-    fields: ['cmsApiToken'],
+    fields: ['cmsApiToken', 'blogId'],
     secretMap: {
       cmsApiToken: ['hs-cms-token-{tenantId}'],
+      blogId: ['hs-blog-id-{tenantId}'],
     },
   },
 };
@@ -149,11 +150,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const credentials = trimCredentials(payload.credentials ?? {});
   const rule = SAVE_RULES[platform];
 
-  const missing = rule.fields.filter(field => !credentials[field]);
+  const missing = platform === 'hubspot'
+    ? []
+    : rule.fields.filter(field => !credentials[field]);
   if (missing.length > 0) {
     return NextResponse.json({
       saved: false,
       error: `Missing required fields: ${missing.join(', ')}`,
+    }, { status: 400 });
+  }
+
+  if (platform === 'hubspot' && !credentials['cmsApiToken'] && !credentials['blogId']) {
+    return NextResponse.json({
+      saved: false,
+      error: 'Add a HubSpot CMS token, a Blog Settings ID, or both.',
     }, { status: 400 });
   }
 
@@ -170,6 +180,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   for (const [field, secretTemplates] of Object.entries(rule.secretMap)) {
     const value = credentials[field] ?? '';
+    if (!value) continue;
     for (const template of secretTemplates) {
       const secretName = template.replace('{tenantId}', tenantId);
       saveJobs.push(setSecret(secretName, value));

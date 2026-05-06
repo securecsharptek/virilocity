@@ -1634,6 +1634,31 @@ export async function POST(req: NextRequest) {
     return {};
   };
 
+  const parseNestedGeneratedDraft = (value: string): Record<string, unknown> | null => {
+    const trimmed = trimWrappedText(stripCodeFence(value));
+    if (!trimmed.startsWith('{')) return null;
+
+    try {
+      return parseGeneratedDraft(trimmed);
+    } catch {
+      return null;
+    }
+  };
+
+  const pickGeneratedBody = (parsed: Record<string, unknown>, fallback: string): string => {
+    const directBody = typeof parsed['body'] === 'string' ? trimWrappedText(parsed['body']) : '';
+    const nested = directBody ? parseNestedGeneratedDraft(directBody) : null;
+    const nestedBody = typeof nested?.['body'] === 'string' ? trimWrappedText(nested['body']) : '';
+    if (nestedBody) return nestedBody;
+    if (directBody && !directBody.startsWith('{')) return directBody;
+
+    const fallbackParsed = parseNestedGeneratedDraft(fallback);
+    const fallbackBody = typeof fallbackParsed?.['body'] === 'string'
+      ? trimWrappedText(fallbackParsed['body'])
+      : '';
+    return fallbackBody || directBody || fallback;
+  };
+
   const trimWrappedText = (value: string): string => value.trim().replace(/^['"]+|['"]+$/g, '').trim();
 
   const toSlug = (value: string): string => value
@@ -1759,9 +1784,7 @@ Return ONLY valid JSON in this exact shape — no markdown, no extra text:
       const slug = typeof parsed['slug'] === 'string' && trimWrappedText(parsed['slug'])
         ? toSlug(trimWrappedText(parsed['slug']))
         : toSlug(topic);
-      const rawBody = typeof parsed['body'] === 'string' && trimWrappedText(parsed['body'])
-        ? trimWrappedText(parsed['body'])
-        : result.output;
+      const rawBody = pickGeneratedBody(parsed, result.output);
 
       return NextResponse.json({
         ok: true,

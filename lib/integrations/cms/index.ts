@@ -317,14 +317,20 @@ export const publishCMSContent = async (input: CMSPublishInput): Promise<CMSPubl
   if (input.provider === 'webflow') return publishToWebflow(input);
   if (input.provider === 'wordpress') return publishToWordPress(input);
   if (input.provider === 'hubspot') {
-    const result = await publishToHubSpotCMS(input.tenantId, {
-      title: input.title,
-      slug: input.slug,
-      htmlBody: input.htmlBody,
-      schemaJson: input.schemaJson,
-      status: (input.status ?? 'published') as 'draft' | 'published',
-    });
-    return { provider: 'hubspot', itemId: result.itemId, url: result.url, status: result.status };
+    try {
+      const result = await publishToHubSpotCMS(input.tenantId, {
+        title: input.title,
+        slug: input.slug,
+        htmlBody: input.htmlBody,
+        schemaJson: input.schemaJson,
+        status: (input.status ?? 'published') as 'draft' | 'published',
+      });
+      return { provider: 'hubspot', itemId: result.itemId, url: result.url, status: result.status };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const setupBlocked = message.startsWith('HubSpot CMS publish is blocked:');
+      throw asStructuredError('hubspot', message, setupBlocked ? 'missing_credentials' : 'unknown', false);
+    }
   }
 
   throw asStructuredError(input.provider, `Unsupported provider: ${input.provider}`, 'invalid_payload', false);

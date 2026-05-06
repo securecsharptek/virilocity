@@ -11,6 +11,7 @@ type FieldSpec = {
   label: string;
   placeholder: string;
   type: 'text' | 'url' | 'password';
+  required?: boolean;
 };
 
 type PlatformFormSpec = {
@@ -68,9 +69,10 @@ const SPECS: Record<CMSPlatform, PlatformFormSpec> = {
     title: 'Connect HubSpot CMS',
     subtitle: 'Connect your HubSpot blog publishing API',
     fields: [
-      { key: 'cmsApiToken', label: 'CMS API Token', placeholder: 'pat-...', type: 'password' },
+      { key: 'cmsApiToken', label: 'CMS API Token', placeholder: 'pat-... (optional if OAuth is connected)', type: 'password', required: false },
+      { key: 'blogId', label: 'Blog Settings ID', placeholder: '123456789', type: 'text', required: false },
     ],
-    helperText: 'For CMS publishing scope via OAuth, set HUBSPOT_REQUEST_CONTENT_SCOPE=true and enable content scope in your HubSpot app, then reconnect.',
+    helperText: 'Use OAuth for publishing, or add a private app token. If your portal has more than one blog, paste the HubSpot blog settings ID here.',
     helperLink: { href: 'https://developers.hubspot.com/docs/api/private-apps', label: 'HubSpot guide' },
     note: 'Your HubSpot CRM is already connected. This token is only for blog publishing.',
   },
@@ -82,7 +84,7 @@ const validate = (platform: CMSPlatform, values: Credentials): Record<string, st
 
   for (const field of spec.fields) {
     const value = (values[field.key] ?? '').trim();
-    if (!value) {
+    if (!value && field.required !== false) {
       out[field.key] = `${field.label} is required`;
       continue;
     }

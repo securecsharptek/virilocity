@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { authenticate, authErrorToHttp } from '@/lib/auth/middleware';
-import { getSecret } from '@/lib/auth/keyvault';
+import { getSecret, setSecret } from '@/lib/auth/keyvault';
 
 export const runtime = 'nodejs';
 
@@ -133,14 +133,36 @@ const testHubSpot = async (tenantId: string): Promise<{ connected: boolean; erro
   if (!token) return { connected: false, error: 'Not connected — connect HubSpot via OAuth from Settings → CMS or Settings → Integrations' };
 
   try {
-    const cmsRes = await fetch('https://api.hubapi.com/cms/v3/blogs/posts?limit=1', {
+    const configuredBlogId = (
+      (process.env['HUBSPOT_BLOG_ID'] ?? '') ||
+      (await getSecret(`hs-blog-id-${tenantId}`))
+    ).trim();
+
+    const blogEndpoint = configuredBlogId
+      ? `https://api.hubapi.com/cms/v3/blog-settings/settings/${encodeURIComponent(configuredBlogId)}`
+      : 'https://api.hubapi.com/cms/v3/blog-settings/settings?limit=1&archived=false';
+
+    const cmsRes = await fetch(blogEndpoint, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       cache: 'no-store',
     });
 
-    // Preferred path: token has CMS blog access
-    if (cmsRes.ok) return { connected: true };
+    // Preferred path: token has CMS blog access and a blog exists to publish into.
+    if (cmsRes.ok) {
+      const data = (await cmsRes.json().catch(() => ({}))) as Record<string, unknown>;
+      const results = Array.isArray(data['results']) ? (data['results'] as Array<Record<string, unknown>>) : [];
+      const blogId = configuredBlogId || String(results[0]?.['id'] ?? '');
+      if (blogId) {
+        await setSecret(`hs-blog-id-${tenantId}`, blogId);
+        return { connected: true };
+      }
+
+      return {
+        connected: false,
+        error: 'HubSpot CMS is connected, but no HubSpot blog exists yet. Create a blog in HubSpot, then paste its Blog Settings ID in CMS settings.',
+      };
+    }
 
     // Fallback path: token is valid OAuth but lacks CMS scope or CMS entitlement.
     // We validate against CRM contact read, which is part of the base OAuth scopes.
@@ -151,7 +173,17 @@ const testHubSpot = async (tenantId: string): Promise<{ connected: boolean; erro
     });
 
     if (crmRes.ok) {
-      return { connected: true };
+      if (cmsRes.status === 404 && configuredBlogId) {
+        return {
+          connected: false,
+          error: 'The saved HubSpot Blog Settings ID was not found. Check the blog ID in HubSpot CMS settings.',
+        };
+      }
+
+      return {
+        connected: false,
+        error: 'HubSpot CRM is connected, but CMS publishing scope is missing. Reconnect via /api/hubspot/auth?includeContentScope=true or add a HubSpot CMS private app token.',
+      };
     }
 
     if (cmsRes.status === 401 || crmRes.status === 401) {
