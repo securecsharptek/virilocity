@@ -5,7 +5,9 @@
 // B2B org membership validation
 // ─────────────────────────────────────────────────────────────────────────────
 import { importSPKI, jwtVerify } from 'jose';
+import { eq } from 'drizzle-orm';
 import { checkRateLimit } from '../cache/ratelimit';
+import { db, tenants } from '../db/client';
 import type { Tenant } from '../types/index';
 
 const ALGORITHM = 'RS256';
@@ -63,9 +65,28 @@ export const loadTenant = async (tenantId: string): Promise<Tenant | null> => {
   const cached = _tenantCache.get(tenantId);
   if (cached && cached.expires > Date.now()) return cached.tenant;
 
-  // Production: query Neon Postgres via Drizzle ORM
-  // const tenant = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
-  return null;
+  try {
+    const rows = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const row = rows[0];
+    if (!row) return null;
+
+    const tenant: Tenant = {
+      id: row.id,
+      name: row.name,
+      tier: row.tier as Tenant['tier'],
+      model: row.model as Tenant['model'],
+      status: row.status as Tenant['status'],
+      ownerId: row.ownerId ?? undefined,
+      orgId: row.orgId ?? undefined,
+      metadata: (row.metadata as Record<string, unknown> | undefined) ?? undefined,
+      createdAt: row.createdAt?.toISOString() ?? new Date().toISOString(),
+    };
+
+    _tenantCache.set(tenantId, { tenant, expires: Date.now() + 60_000 });
+    return tenant;
+  } catch {
+    return null;
+  }
 };
 
 // ── Full authenticate pipeline ────────────────────────────────────────────────

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate, authErrorToHttp } from '../../../../lib/auth/middleware';
 import { getSecret } from '../../../../lib/auth/keyvault';
+import { getM365ConnectionStatus } from '../../../../lib/m365/token-store';
 
 export const runtime = 'nodejs';
 
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const statuses = await Promise.all([
     checkHubSpot(tenantId),
     checkLinkedIn(tenantId),
-    checkM365(tenant),
+    checkM365(tenantId),
     checkNeon(),
     checkRedis(),
     checkClaudeApi(),
@@ -84,10 +85,10 @@ async function checkLinkedIn(tenantId: string): Promise<IntegrationStatus> {
   }
 }
 
-async function checkM365(tenant: { metadata?: Record<string, unknown> }): Promise<IntegrationStatus> {
+async function checkM365(tenantId: string): Promise<IntegrationStatus> {
   try {
-    // M365 is connected if tenant.metadata has 'm365TokenRef' set
-    const connected = !!(tenant.metadata?.['m365TokenRef']);
+    const status = await getM365ConnectionStatus(tenantId);
+    const connected = status.connected;
     return {
       name: 'Microsoft 365',
       connected,

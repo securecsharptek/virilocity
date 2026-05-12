@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import useSWR from 'swr';
 import ConnectionModal from './ConnectionModal';
@@ -14,7 +14,32 @@ type PlatformsResponse = {
     connected: boolean;
     statusText: string;
     details?: string;
+    siteName?: string;
+    collectionName?: string;
   }>;
+};
+
+type WebflowDiscoveryResponse = {
+  ok?: boolean;
+  selectedSiteId?: string;
+  sites?: Array<{ id: string; name: string }>;
+  collections?: Array<{ id: string; name: string; slug?: string }>;
+  error?: string;
+};
+
+type AiReviewSuggestion = {
+  title: string;
+  slug: string;
+  htmlBody: string;
+};
+
+type AiReviewDetails = {
+  agentType?: string;
+  score?: number | null;
+  reasons?: string[];
+  summary?: string;
+  recommendations?: string[];
+  suggestedDraft?: AiReviewSuggestion | null;
 };
 
 const fetcher = async <T,>(url: string): Promise<T> => {
@@ -42,6 +67,25 @@ const platformTitle = (platform: CMSPlatform): string => {
   if (platform === 'shopify') return 'Shopify';
   if (platform === 'webflow') return 'Webflow';
   return 'HubSpot';
+};
+
+const mapShopifyError = (reason: string | null): string => {
+  if (!reason) return 'Shopify connection failed';
+  if (reason === 'invalid_shop') return 'Enter a valid Shopify .myshopify.com store domain.';
+  if (reason === 'missing_blog') return 'Shopify connected, but no blog was found. Create a blog in Shopify, then reconnect.';
+  if (reason === 'invalid_hmac' || reason === 'invalid_state') return 'Shopify OAuth validation failed. Please try connecting again.';
+  if (reason === 'missing_tenant' || reason === 'missing_code') return 'Shopify OAuth did not complete. Please try again.';
+  return decodeURIComponent(reason);
+};
+
+const mapWebflowError = (reason: string | null): string => {
+  if (!reason) return 'Webflow connection failed';
+  if (reason === 'missing_tenant') return 'Webflow OAuth could not determine tenant. Please sign in and retry.';
+  if (reason === 'missing_code') return 'Webflow OAuth did not complete. Please try again.';
+  if (reason === 'invalid_state') return 'Webflow OAuth validation failed. Please reconnect.';
+  if (reason === 'missing_site') return 'No Webflow sites were found for this account.';
+  if (reason === 'missing_collection') return 'No CMS collections were found in the selected Webflow site.';
+  return decodeURIComponent(reason);
 };
 
 const saveConnection = async (platform: CMSPlatform, credentials: Record<string, string>) => {
@@ -111,6 +155,54 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
   });
 
   const [activeModal, setActiveModal] = useState<CMSPlatform | null>(null);
+  const [webflowSites, setWebflowSites] = useState<Array<{ id: string; name: string }>>([]);
+  const [webflowCollections, setWebflowCollections] = useState<Array<{ id: string; name: string }>>([]);
+  const [webflowSelection, setWebflowSelection] = useState<{ siteId: string; collectionId: string }>({
+    siteId: '',
+    collectionId: '',
+  });
+  const [webflowLoadingOptions, setWebflowLoadingOptions] = useState(false);
+
+  const loadWebflowDiscovery = useCallback(async (siteId?: string) => {
+    setWebflowLoadingOptions(true);
+    try {
+      const query = siteId ? `?siteId=${encodeURIComponent(siteId)}` : '';
+      const response = await fetch(`/api/integrations/webflow/discovery${query}`, { cache: 'no-store' });
+      const body = (await response.json().catch(() => ({}))) as WebflowDiscoveryResponse;
+
+      if (!response.ok || !body.ok) {
+        throw new Error(body.error ?? 'Unable to discover Webflow sites and collections');
+      }
+
+      const sites = body.sites ?? [];
+      const collections = body.collections ?? [];
+      const selectedSiteId = body.selectedSiteId ?? sites[0]?.id ?? '';
+      const selectedCollectionId = collections[0]?.id ?? '';
+
+      setWebflowSites(sites);
+      setWebflowCollections(collections.map(item => ({ id: item.id, name: item.name })));
+      setWebflowSelection({
+        siteId: selectedSiteId,
+        collectionId: selectedCollectionId,
+      });
+
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Webflow discovery failed';
+      setPlatformState(prev => ({
+        ...prev,
+        webflow: {
+          platform: 'webflow',
+          status: 'error',
+          error: message,
+          lastTested: new Date().toISOString(),
+        },
+      }));
+      return { ok: false, error: message };
+    } finally {
+      setWebflowLoadingOptions(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!data?.platforms) return;
@@ -127,6 +219,46 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
       hubspot: mapServerStatus('hubspot', normalized['hubspot']),
     }));
   }, [data]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shopifyStatus = params.get('shopify');
+    const webflowStatus = params.get('webflow');
+
+    if (shopifyStatus === 'connected') {
+      void mutate();
+    }
+
+    if (shopifyStatus === 'error') {
+      setPlatformState(prev => ({
+        ...prev,
+        shopify: {
+          platform: 'shopify',
+          status: 'error',
+          error: mapShopifyError(params.get('reason')),
+          lastTested: new Date().toISOString(),
+        },
+      }));
+    }
+
+    if (webflowStatus === 'connected') {
+      void mutate();
+      setActiveModal('webflow');
+      void loadWebflowDiscovery();
+    }
+
+    if (webflowStatus === 'error') {
+      setPlatformState(prev => ({
+        ...prev,
+        webflow: {
+          platform: 'webflow',
+          status: 'error',
+          error: mapWebflowError(params.get('reason')),
+          lastTested: new Date().toISOString(),
+        },
+      }));
+    }
+  }, [mutate, loadWebflowDiscovery]);
 
   const setPlatformBusy = (platform: CMSPlatform, busy: boolean) => {
     setLoadingByPlatform(prev => ({ ...prev, [platform]: busy }));
@@ -188,6 +320,17 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
       return;
     }
 
+    if (platform === 'webflow') {
+      if (status === 'disconnected') {
+        void handleStartOAuth('webflow', {});
+        return;
+      }
+
+      setActiveModal('webflow');
+      void loadWebflowDiscovery();
+      return;
+    }
+
     if (status === 'connected') {
       void runTest(platform);
       return;
@@ -209,7 +352,15 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
     }));
 
     try {
-      await saveConnection(platform, credentials);
+      const withPlatformMetadata = platform === 'webflow'
+        ? {
+            ...credentials,
+            siteName: webflowSites.find(site => site.id === credentials['siteId'])?.name ?? '',
+            collectionName: webflowCollections.find(collection => collection.id === credentials['collectionId'])?.name ?? '',
+          }
+        : credentials;
+
+      await saveConnection(platform, withPlatformMetadata);
       const tested = await testConnection(platform);
 
       if (!tested.connected) {
@@ -252,6 +403,27 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
     }
   };
 
+  const handleStartOAuth = async (platform: CMSPlatform, credentials: Record<string, string>) => {
+    const returnTo = encodeURIComponent('/dashboard?tab=settings&lever=cms');
+
+    if (platform === 'webflow') {
+      window.location.assign(`/api/integrations/webflow/connect?returnTo=${returnTo}`);
+      return { ok: true };
+    }
+
+    if (platform !== 'shopify') {
+      return { ok: false, error: 'OAuth is only supported for Shopify and Webflow in this flow.' };
+    }
+
+    const storeUrl = (credentials['storeUrl'] ?? '').trim();
+    if (!storeUrl) {
+      return { ok: false, error: 'Store URL is required', fieldErrors: { storeUrl: 'Store URL is required' } };
+    }
+
+    window.location.assign(`/api/shopify/auth?shop=${encodeURIComponent(storeUrl)}&returnTo=${returnTo}`);
+    return { ok: true };
+  };
+
   const handleDisconnect = async (platform: CMSPlatform) => {
     setPlatformBusy(platform, true);
 
@@ -269,6 +441,12 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
 
       if (selectedPlatform === platform) {
         setSelectedPlatform('');
+      }
+
+      if (platform === 'webflow') {
+        setWebflowSites([]);
+        setWebflowCollections([]);
+        setWebflowSelection({ siteId: '', collectionId: '' });
       }
 
       await mutate();
@@ -308,6 +486,7 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
   const [selectedPlatform, setSelectedPlatform] = useState<CMSPlatform | ''>('');
   const [publishLoading, setPublishLoading] = useState(false);
   const [publishResult, setPublishResult] = useState<{ ok: boolean; url?: string; itemId?: string; error?: string; action?: 'hubspot-settings' } | null>(null);
+  const [aiReview, setAiReview] = useState<AiReviewDetails | null>(null);
 
   const isHubSpotBlogSetupError = (message?: string): boolean => {
     return Boolean(message && /HubSpot blog|Blog Settings ID|no HubSpot blog/i.test(message));
@@ -318,6 +497,7 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
     setGenerateLoading(true);
     setGenerateError(null);
     setPublishResult(null);
+    setAiReview(null);
     try {
       const res = await fetch('/dashboard/data', {
         method: 'POST',
@@ -352,6 +532,7 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
     if (!selectedPlatform || !generatedTitle || !generatedBody) return;
     setPublishLoading(true);
     setPublishResult(null);
+    setAiReview(null);
     try {
       if (selectedPlatform === 'hubspot') {
         const tested = await testConnection('hubspot');
@@ -388,10 +569,17 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         result?: { url?: string; itemId?: string };
-        error?: { message?: string };
+        error?: {
+          code?: string;
+          message?: string;
+          review?: AiReviewDetails;
+        };
       };
       if (!res.ok) {
         const message = json.error?.message ?? `Publish failed (${res.status})`;
+        if (json.error?.code === 'blocked_by_ai_review' && json.error.review) {
+          setAiReview(json.error.review);
+        }
         if (selectedPlatform === 'hubspot' && isHubSpotBlogSetupError(message)) {
           setActiveModal('hubspot');
           setPublishResult({ ok: false, error: message, action: 'hubspot-settings' });
@@ -400,6 +588,7 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
         throw new Error(message);
       }
       setPublishResult({ ok: true, url: json.result?.url, itemId: json.result?.itemId });
+      setAiReview(null);
     } catch (e) {
       setPublishResult({ ok: false, error: e instanceof Error ? e.message : 'Publish failed' });
     } finally {
@@ -760,6 +949,88 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
                       </motion.div>
                     )}
                   </AnimatePresence>
+
+                  {aiReview && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      className="rounded-xl px-4 py-4"
+                      style={{
+                        background: 'rgba(239,100,100,0.07)',
+                        border: '1px solid rgba(239,100,100,0.35)',
+                        color: 'rgba(255,220,220,0.96)',
+                      }}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[11px] uppercase tracking-[1px] text-[rgba(255,190,190,0.9)]">AI Review</span>
+                        {typeof aiReview.agentType === 'string' && aiReview.agentType ? (
+                          <span className="rounded-full border border-[rgba(255,160,160,0.45)] px-2 py-0.5 font-mono text-[10px] text-[rgba(255,210,210,0.96)]">
+                            Agent: {aiReview.agentType}
+                          </span>
+                        ) : null}
+                        {typeof aiReview.score === 'number' ? (
+                          <span className="rounded-full border border-[rgba(255,160,160,0.45)] px-2 py-0.5 font-mono text-[10px] text-[rgba(255,210,210,0.96)]">
+                            Score: {Math.round(aiReview.score)}/100
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {aiReview.summary ? (
+                        <p className="mt-2 font-sans text-[13px] text-[rgba(255,225,225,0.95)]">{aiReview.summary}</p>
+                      ) : null}
+
+                      {Array.isArray(aiReview.reasons) && aiReview.reasons.length > 0 ? (
+                        <div className="mt-3">
+                          <p className="font-mono text-[10px] uppercase tracking-[1px] text-[rgba(255,180,180,0.86)]">Why blocked</p>
+                          <ul className="mt-1 list-disc pl-5 font-sans text-[12px] leading-relaxed text-[rgba(255,220,220,0.92)]">
+                            {aiReview.reasons.slice(0, 5).map((reason, index) => (
+                              <li key={`reason-${index}`}>{reason}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+
+                      {Array.isArray(aiReview.recommendations) && aiReview.recommendations.length > 0 ? (
+                        <div className="mt-3">
+                          <p className="font-mono text-[10px] uppercase tracking-[1px] text-[rgba(255,180,180,0.86)]">Recommended fixes</p>
+                          <ul className="mt-1 list-disc pl-5 font-sans text-[12px] leading-relaxed text-[rgba(255,220,220,0.92)]">
+                            {aiReview.recommendations.slice(0, 5).map((item, index) => (
+                              <li key={`fix-${index}`}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+
+                      {aiReview.suggestedDraft ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGeneratedBody(aiReview.suggestedDraft?.htmlBody ?? generatedBody);
+                              setPublishResult(null);
+                            }}
+                            className="rounded-lg border border-[rgba(255,170,170,0.45)] px-3 py-1.5 font-mono text-[11px] font-bold text-[rgba(255,230,230,0.96)] hover:bg-[rgba(255,170,170,0.12)] transition-colors"
+                          >
+                            Insert Suggested Body
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const draft = aiReview.suggestedDraft;
+                              if (!draft) return;
+                              setGeneratedTitle(draft.title);
+                              setGeneratedSlug(draft.slug);
+                              setGeneratedBody(draft.htmlBody);
+                              setPublishResult(null);
+                            }}
+                            className="rounded-lg border border-[rgba(255,170,170,0.45)] px-3 py-1.5 font-mono text-[11px] font-bold text-[rgba(255,230,230,0.96)] hover:bg-[rgba(255,170,170,0.12)] transition-colors"
+                          >
+                            Apply Full Suggested Draft
+                          </button>
+                        </div>
+                      ) : null}
+                    </motion.div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -770,8 +1041,20 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
       <ConnectionModal
         open={activeModal !== null}
         platform={activeModal}
+        initialValues={activeModal === 'webflow' ? {
+          siteId: webflowSelection.siteId,
+          collectionId: webflowSelection.collectionId,
+        } : undefined}
+        webflowSites={webflowSites}
+        webflowCollections={webflowCollections}
+        webflowLoadingOptions={webflowLoadingOptions}
+        onWebflowSiteChange={(siteId) => {
+          if (!siteId) return;
+          void loadWebflowDiscovery(siteId);
+        }}
         onClose={() => setActiveModal(null)}
         onSaveAndTest={handleSaveAndTest}
+        onStartOAuth={handleStartOAuth}
       />
     </main>
   );

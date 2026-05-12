@@ -80,16 +80,34 @@ vi.mock('@neondatabase/serverless', () => ({
 }));
 
 // ── Mock drizzle-orm ──────────────────────────────────────────────────────────
+const mockDbChain = {
+  select:              vi.fn(),
+  from:                vi.fn(),
+  where:               vi.fn(),
+  limit:               vi.fn(),
+  orderBy:             vi.fn(),
+  insert:              vi.fn(),
+  values:              vi.fn(),
+  onConflictDoUpdate:  vi.fn(),
+  onConflictDoNothing: vi.fn(),
+  update:              vi.fn(),
+  set:                 vi.fn(),
+  delete:              vi.fn(),
+  execute:             vi.fn(),
+};
+// Every method returns the same chain so any sequence of calls resolves correctly
+Object.keys(mockDbChain).forEach(key => {
+  (mockDbChain as Record<string, ReturnType<typeof vi.fn>>)[key].mockReturnValue(mockDbChain);
+});
+// Terminal methods that should resolve
+mockDbChain.limit.mockResolvedValue([]);
+mockDbChain.execute.mockResolvedValue({ rowCount: 1 });
+mockDbChain.onConflictDoUpdate.mockResolvedValue({ rowCount: 1 });
+mockDbChain.onConflictDoNothing.mockResolvedValue({ rowCount: 1 });
+mockDbChain.orderBy.mockResolvedValue([]);
+
 vi.mock('drizzle-orm/neon-http', () => ({
-  drizzle: vi.fn().mockReturnValue({
-    select:  vi.fn().mockReturnThis(),
-    from:    vi.fn().mockReturnThis(),
-    where:   vi.fn().mockReturnThis(),
-    limit:   vi.fn().mockResolvedValue([]),
-    insert:  vi.fn().mockReturnThis(),
-    values:  vi.fn().mockReturnThis(),
-    execute: vi.fn().mockResolvedValue({ rowCount: 1 }),
-  }),
+  drizzle: vi.fn().mockReturnValue(mockDbChain),
 }));
 
 

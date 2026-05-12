@@ -1,16 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { runAutopilot, AUTOPILOT_TASKS as ENGINE_AUTOPILOT_TASKS } from '../../../lib/agents/autopilot';
+import type { TenantAgentContext, AutopilotResult } from '../../../lib/agents/autopilot';
 import { runAgentCall } from '../../../lib/ai/client';
-import { HubSpotContacts } from '../../../lib/integrations/hubspot';
+import { HubSpotAuth, HubSpotContacts } from '../../../lib/integrations/hubspot';
 import { getTenantDashboardState, setTenantDashboardState } from '../../../lib/db/dashboard-state';
 import type { Tenant, Tier, TenantModel, AgentType } from '../../../lib/types/index';
-import { getSecret } from '../../../lib/auth/keyvault';
+import { getSecret, setSecret } from '../../../lib/auth/keyvault';
 import { publishCMSContent, CMSIntegrationError } from '../../../lib/integrations/cms';
 import { LinkedInPoster } from '../../../lib/integrations/linkedin';
-import { AGENT_COUNT, HAIKU_AGENTS, REDDIT_REQUIRES_HUMAN_APPROVAL } from '../../../lib/types/index';
-import { db, contentPages, payments, agentExecutions, abTests as abTestsTable } from '../../../lib/db/client';
-import { eq, desc, sum, count } from 'drizzle-orm';
+import {
+  AGENT_ACTIVATION_PLAN,
+  AGENT_COUNT,
+  HAIKU_AGENTS,
+  REDDIT_REQUIRES_HUMAN_APPROVAL,
+  TIER_LIMITS,
+  TIER_ORDER,
+} from '../../../lib/types/index';
+import { db, contentPages, payments, agentExecutions, abTests as abTestsTable, hsContacts, kbDocuments as kbDocumentsTable, orgMembers as orgMembersTable, users } from '../../../lib/db/client';
+import { uid, trunc } from '../../../lib/utils/index';
+import { eq, desc, sum, count, gte, and } from 'drizzle-orm';
+
+// Lightweight in-process backoff so frequent /dashboard/data polls do not spam
+// external HubSpot calls/logs when credentials are missing or invalid.
+const HUBSPOT_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
+const hubspotSyncMutedUntil = new Map<string, number>();
+const hubspotLogMutedUntil = new Map<string, number>();
+
+const isMuted = (store: Map<string, number>, key: string): boolean => {
+  const until = store.get(key) ?? 0;
+  return until > Date.now();
+};
+
+const mute = (store: Map<string, number>, key: string, ttlMs: number): void => {
+  store.set(key, Date.now() + ttlMs);
+};
+
+const shouldLogHubspot = (tenantId: string, reason: string): boolean => {
+  const key = `${tenantId}:${reason}`;
+  if (isMuted(hubspotLogMutedUntil, key)) return false;
+  mute(hubspotLogMutedUntil, key, HUBSPOT_SYNC_COOLDOWN_MS);
+  return true;
+};
 
 type FeedItem = {
   id: string;
@@ -300,14 +331,20 @@ const getAutopilotModelLabel = (agent: AgentType, tier: Tier): string => {
 };
 
 const buildAutopilotTasks = (tier: Tier): TaskScheduleItem[] => {
-  const scheduled = ENGINE_AUTOPILOT_TASKS.map((agent): TaskScheduleItem => ({
-    agent,
-    task: AUTOPILOT_TASK_LABELS[agent] ?? `Run ${agent.replaceAll('_', ' ')}`,
-    model: getAutopilotModelLabel(agent, tier),
-    status: 'scheduled',
-  }));
+  const tierLimit = TIER_LIMITS[tier].agentsEnabled;
+  const eligibleAgents = ENGINE_AUTOPILOT_TASKS.filter(agent =>
+    TIER_ORDER[tier] >= TIER_ORDER[AGENT_ACTIVATION_PLAN[agent].minTier],
+  );
+  const scheduled = eligibleAgents
+    .filter((_, index) => tierLimit < 0 || index < tierLimit)
+    .map((agent): TaskScheduleItem => ({
+      agent,
+      task: AUTOPILOT_TASK_LABELS[agent] ?? `Run ${agent.replaceAll('_', ' ')}`,
+      model: getAutopilotModelLabel(agent, tier),
+      status: 'scheduled',
+    }));
 
-  if (REDDIT_REQUIRES_HUMAN_APPROVAL) {
+  if (REDDIT_REQUIRES_HUMAN_APPROVAL && TIER_ORDER[tier] >= TIER_ORDER[AGENT_ACTIVATION_PLAN.reddit_manager.minTier]) {
     scheduled.push({
       agent: 'reddit_manager',
       task: 'Draft community post',
@@ -442,6 +479,8 @@ const syncAgentsFromAutopilot = (store: DashboardStore) => {
     'campaign_orchestrator',
   ];
 
+  const tenantTier = ((store.userProfile.tier ?? 'free') as Tier);
+
   store.agents.all = ALL_AGENT_TYPES.map((agentName, index) => {
     const task = taskStatusMap.get(agentName);
     const status: AgentCard['status'] = task?.status === 'running'
@@ -449,7 +488,6 @@ const syncAgentsFromAutopilot = (store: DashboardStore) => {
       : task?.status === 'hitl'
         ? 'hitl'
         : 'idle';
-    const isHaiku = HAIKU_AGENTS.has(agentName as AgentType);
 
     return {
       id: `agent_${index + 1}`,
@@ -458,7 +496,7 @@ const syncAgentsFromAutopilot = (store: DashboardStore) => {
       status,
       description: agentDescriptions[agentName] ?? agentName.replace(/_/g, ' ').toUpperCase(),
       fairnessScore: status === 'hitl' ? 0 : Math.floor(78 + ((index * 7) % 18)),
-      model: isHaiku ? 'Haiku' : (index % 3 === 0 ? 'Opus' : 'Sonnet'),
+      model: getAutopilotModelLabel(agentName as AgentType, tenantTier),
       timestamp: task ? getAgentCardTimestamp(task.status) : 'Available · not scheduled',
     };
   });
@@ -476,7 +514,7 @@ const syncAgentsFromAutopilot = (store: DashboardStore) => {
   store.agents.scheduled = store.autopilot.tasks.map((task, index) => ({
     id: `sch_${index + 1}`,
     name: task.agent,
-    schedule: task.status === 'hitl' ? 'Human approval' : 'Every 6h',
+    schedule: task.status === 'hitl' ? 'Human approval' : 'Every 24h',
     nextRun: task.status === 'running' ? 'in progress' : getCountdownLabel(store.autopilot.nextRunAt),
     model: task.model,
     estDuration: task.status === 'hitl' ? '~manual' : '~2m',
@@ -672,47 +710,22 @@ const INITIAL_STORE: DashboardStore = {
   testsPassedLabel: '535/535 PASS',
   tevvScore: 95.4,
   kpis: {
-    activeAgents: 12,
-    postsGenerated: 47,
-    leadsCaptured: 284,
-    mrr: 8320,
+    activeAgents: 0,
+    postsGenerated: 0,
+    leadsCaptured: 0,
+    mrr: 0,
   },
-  feedItems: [
-    {
-      id: '1',
-      message: '**blog_writer** generated "10 AI Marketing Trends" — 1,240 words',
-      time: '2 min ago · Sonnet · BIAS 84.2',
-      type: 'teal',
-    },
-    {
-      id: '2',
-      message: '**lead_qualifier** scored 14 new HubSpot contacts',
-      time: '7 min ago · Haiku',
-      type: 'green',
-    },
-    {
-      id: '3',
-      message: '**reddit_manager** awaiting approval — r/SaaSMarketing post ready',
-      time: '12 min ago · HITL pending',
-      type: 'gold',
-    },
-    {
-      id: '4',
-      message: '**seo_optimizer** updated 8 meta descriptions for blog posts',
-      time: '18 min ago · Haiku',
-      type: 'teal',
-    },
-  ],
+  feedItems: [],
   autopilot: {
     running: false,
     paused: false,
     stopRequested: false,
     nextRunAt: now() + 2 * 60 * 60 * 1000 + 4 * 60 * 1000,
     lastRunSummary: {
-      completedTasks: 34,
-      postsCreated: 58,
-      hitlPending: 3,
-      durationText: '02:18',
+      completedTasks: 0,
+      postsCreated: 0,
+      hitlPending: INITIAL_HITL_QUEUE.length,
+      durationText: '—',
     },
     tasks: buildAutopilotTasks('free'),
   },
@@ -744,19 +757,8 @@ const INITIAL_STORE: DashboardStore = {
       { id: '6', name: 'competitor_analyzer', schedule: 'Weekly Mon', nextRun: 'in 2d', model: 'Sonnet', estDuration: '~8m', status: 'scheduled' },
       { id: '7', name: 'ab_test_analyzer', schedule: 'Weekly Sun', nextRun: 'in 6d', model: 'Sonnet', estDuration: '~7m', status: 'scheduled' },
     ],
-  },  kbDocuments: [
-    { id: '1', category: 'product-docs', title: 'Virilocity Platform Overview', words: '4,280 words', updated: 'Updated 2d ago', actionLabel: 'Re-train' },
-    { id: '2', category: 'product-docs', title: '39 Agent Capabilities Guide', words: '8,640 words', updated: 'Updated today', actionLabel: 'Re-train' },
-    { id: '3', category: 'brand', title: 'Brand Voice & Tone Guidelines', words: '2,100 words', updated: 'Updated 5d ago', actionLabel: 'Edit' },
-    { id: '4', category: 'competitor-intel', title: 'Market Landscape Analysis', words: '6,320 words', updated: 'Updated 1w ago', actionLabel: 'Re-train' },
-    { id: '5', category: 'product-docs', title: 'Pricing & Tier Comparison', words: '1,840 words', updated: 'Updated 3d ago', actionLabel: 'Re-train' },
-  ],
-  orgMembers: [
-    { id: 'mem_001', initials: 'KM', name: 'Keshav Choudhary', email: 'keshav@cloudonesoftware.com', role: 'Owner' },
-    { id: 'mem_002', initials: 'AM', name: 'Alex Martinez', email: 'alex@cloudonesoftware.com', role: 'Admin' },
-    { id: 'mem_003', initials: 'JL', name: 'Jamie Lee', email: 'jamie@cloudonesoftware.com', role: 'Member' },
-    { id: 'mem_004', initials: 'SR', name: 'Sam Rivera', email: 'sam@cloudonesoftware.com', role: 'Member' },
-  ],
+  },  kbDocuments: [],
+  orgMembers: [],
   userProfile: {
     name: 'User',
     initials: 'U',
@@ -828,78 +830,47 @@ const INITIAL_STORE: DashboardStore = {
     ],
   },
   contacts: {
-    all: [
-      { id: '1', name: 'Sarah Chen', company: 'TechFlow Inc', stage: 'Customer', leadScore: 94, lastEnriched: '2h ago', risk: 'Low' },
-      { id: '2', name: 'Marcus Williams', company: 'GrowthLabs', stage: 'SQL', leadScore: 87, lastEnriched: '4h ago', risk: 'Low' },
-      { id: '3', name: 'Priya Patel', company: 'Scale.io', stage: 'MQL', leadScore: 71, lastEnriched: '8h ago', risk: 'Medium' },
-      { id: '4', name: 'Jordan Lee', company: 'Nexus Digital', stage: 'Customer', leadScore: 88, lastEnriched: '1d ago', risk: 'High' },
-      { id: '5', name: 'Alex Romero', company: 'BrightPath Co', stage: 'Lead', leadScore: 42, lastEnriched: '2d ago', risk: null },
-      { id: '6', name: 'Kim Nakamura', company: 'DataDriven LLC', stage: 'SQL', leadScore: 83, lastEnriched: '3h ago', risk: 'Low' },
-      { id: '7', name: "Chris O'Brien", company: 'LaunchFast', stage: 'Customer', leadScore: 91, lastEnriched: '6h ago', risk: 'Medium' },
-    ],
+    all: [],
     pipelineCols: [
       {
-        stage: 'LEADS', count: 48, value: '$0', valueColor: 'rgba(220,235,255,0.88)',
+        stage: 'LEADS', count: 0, value: '$0', valueColor: 'rgba(220,235,255,0.88)',
         headerColor: 'rgba(200,220,245,0.55)', borderColor: 'rgba(180,200,230,0.14)',
         glow: '0 6px 20px rgba(0,0,0,0.4)',
-        more: 45,
-        leads: [
-          { company: 'LaunchFast', score: 42 },
-          { company: 'Momentum Co', score: 38 },
-        ],
+        more: 0,
+        leads: [],
       },
       {
-        stage: 'MQL', count: 32, value: '$28K', valueColor: 'rgba(100,180,255,0.95)',
+        stage: 'MQL', count: 0, value: '$0', valueColor: 'rgba(100,180,255,0.95)',
         headerColor: 'rgba(100,160,255,0.65)', borderColor: 'rgba(80,130,240,0.22)',
         glow: '0 6px 20px rgba(0,0,0,0.4)',
-        more: 28,
-        leads: [
-          { company: 'Scale.io', score: 71 },
-          { company: 'AgileCorp', score: 68 },
-        ],
+        more: 0,
+        leads: [],
       },
       {
-        stage: 'SQL', count: 18, value: '$72K', valueColor: 'rgba(24,222,220,0.97)',
+        stage: 'SQL', count: 0, value: '$0', valueColor: 'rgba(24,222,220,0.97)',
         headerColor: 'rgba(24,218,214,0.7)', borderColor: 'rgba(14,200,198,0.24)',
         glow: '0 6px 20px rgba(0,0,0,0.4)',
-        more: 15,
-        leads: [
-          { company: 'GrowthLabs', score: 87 },
-          { company: 'DataDriven', score: 83 },
-        ],
+        more: 0,
+        leads: [],
       },
       {
-        stage: 'CUSTOMER', count: 88, value: '$42K MRR', valueColor: 'rgba(255,210,90,0.97)',
+        stage: 'CUSTOMER', count: 0, value: '$0', valueColor: 'rgba(255,210,90,0.97)',
         headerColor: 'rgba(255,200,70,0.65)', borderColor: 'rgba(220,170,50,0.55)',
         glow: '0 0 0 1px rgba(220,170,50,0.35), 0 6px 28px rgba(0,0,0,0.5), 0 0 32px rgba(200,155,30,0.28), 0 0 60px rgba(180,135,20,0.14)',
-        more: 85,
-        leads: [
-          { company: 'TechFlow', score: 94 },
-          { company: "Chris O'Brien", score: 91 },
-        ],
+        more: 0,
+        leads: [],
       },
     ],
-    segments: [
-      { id: '1', name: 'At-Risk Customers', contacts: 3, contactsAlert: true, criteria: 'Churn score <0.3', lastUpdated: '31m ago', action: 'Email Campaign', actionVariant: 'teal' },
-      { id: '2', name: 'High-Value SQLs', contacts: 12, contactsAlert: false, criteria: 'Score >80 & stage=SQL', lastUpdated: '3h ago', action: 'Email Campaign', actionVariant: 'teal' },
-      { id: '3', name: 'Trial Users · Day 7', contacts: 28, contactsAlert: false, criteria: 'Trial, joined 7d ago', lastUpdated: 'Daily', action: 'Drip Sequence', actionVariant: 'teal' },
-      { id: '4', name: 'Engaged MQLs', contacts: 44, contactsAlert: false, criteria: 'Stage=MQL & 3+ visits', lastUpdated: '6h ago', action: 'Email Campaign', actionVariant: 'teal' },
-      { id: '5', name: 'Enterprise Prospects', contacts: 8, contactsAlert: false, criteria: 'Company size >200', lastUpdated: '1d ago', action: 'Sales Outreach', actionVariant: 'gold' },
-    ],
+    segments: [],
     summary: {
-      totalSynced: 284,
-      pipelineValue: '$142K',
-      activeSegments: 6,
+      totalSynced: 0,
+      pipelineValue: '$0',
+      activeSegments: 0,
     },
   },
   socialPosts: INITIAL_SOCIAL_POSTS,
   settings: {
-    billingHistory: [
-      { date: 'Apr 12, 2026', amount: '$499.00', status: 'Paid' },
-      { date: 'Mar 12, 2026', amount: '$499.00', status: 'Paid' },
-      { date: 'Feb 12, 2026', amount: '$399.00', status: 'Paid' },
-      { date: 'Jan 12, 2026', amount: '$399.00', status: 'Paid' },
-    ],
+    billingHistory: [],
     platformStatus: [
       { name: 'Vercel Edge', status: 'Operational' },
       { name: 'Neon Database', status: 'Operational' },
@@ -1120,24 +1091,125 @@ const toContactStage = (lifecycleStage?: string | null): Contact['stage'] => {
 };
 
 const toLeadScore = (props?: Record<string, string | null>): number => {
-  const raw = props?.['hs_lead_score'] ?? props?.['hubspotscore'] ?? null;
+  const scoreCandidates = [
+    props?.['hs_lead_score'],
+    props?.['hubspotscore'],
+    props?.['hs_predictivecontactscore_v2'],
+  ];
+
+  const raw = scoreCandidates.find(value => Boolean(value && value.trim().length > 0)) ?? null;
   const parsed = raw ? Number(raw) : NaN;
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, Math.min(100, Math.round(parsed)));
 };
 
-const computeContactsFromHubSpot = async (tenantId: string, store: DashboardStore): Promise<void> => {
-  try {
-    const accessToken = await getSecret(`hubspot-access-${tenantId}`);
-    if (!accessToken) {
-      console.warn('[hubspot-sync] skipped: missing access token', { tenantId });
-      return;
-    }
+const toRisk = (props?: Record<string, string | null>): Contact['risk'] => {
+  const normalize = (value?: string | null): Contact['risk'] => {
+    const v = (value ?? '').trim().toLowerCase();
+    if (!v) return null;
+    if (v.includes('high')) return 'High';
+    if (v.includes('medium') || v.includes('med')) return 'Medium';
+    if (v.includes('low')) return 'Low';
+    return null;
+  };
 
-    const hubspot = new HubSpotContacts(accessToken);
-    const rows = await hubspot.listContacts(100);
+  const explicitRisk =
+    normalize(props?.['risk'])
+    ?? normalize(props?.['risk_level'])
+    ?? normalize(props?.['churn_risk']);
+  if (explicitRisk) return explicitRisk;
+
+  const churnRaw = props?.['churn_risk_score'] ?? null;
+  const churnScore = churnRaw ? Number(churnRaw) : NaN;
+  if (Number.isFinite(churnScore)) {
+    // Supports either 0-1 or 0-100 format.
+    const normalized = churnScore <= 1 ? churnScore * 100 : churnScore;
+    if (normalized >= 70) return 'High';
+    if (normalized >= 40) return 'Medium';
+    return 'Low';
+  }
+
+  return null;
+};
+
+const toRelativeTime = (props?: Record<string, string | null>): string => {
+  const raw = (props?.['lastmodifieddate'] ?? '').trim();
+  if (!raw) return '—';
+
+  const ts = Date.parse(raw);
+  if (!Number.isFinite(ts)) return '—';
+
+  const diffMs = Math.max(0, Date.now() - ts);
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
+const GENERIC_EMAIL_DOMAINS = new Set([
+  'gmail.com',
+  'yahoo.com',
+  'hotmail.com',
+  'outlook.com',
+  'live.com',
+  'icloud.com',
+  'proton.me',
+  'protonmail.com',
+  'aol.com',
+]);
+
+const toDisplayCompany = (props: Record<string, string | null>, email: string): string => {
+  const explicitCompany = (props['company'] ?? '').trim();
+  if (explicitCompany) return explicitCompany;
+
+  const domain = email.split('@')[1]?.trim().toLowerCase() ?? '';
+  if (!domain || GENERIC_EMAIL_DOMAINS.has(domain)) {
+    return '—';
+  }
+
+  const root = domain.replace(/^www\./, '').split('.')[0] ?? '';
+  if (!root) return '—';
+
+  return root
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const resetContactsState = (store: DashboardStore): void => {
+  store.contacts.all = [];
+  store.contacts.segments = [];
+  store.contacts.summary = {
+    ...store.contacts.summary,
+    totalSynced: 0,
+    pipelineValue: '$0',
+    activeSegments: 0,
+  };
+  store.contacts.pipelineCols = store.contacts.pipelineCols.map(col => ({
+    ...col,
+    count: 0,
+    value: '$0',
+    more: 0,
+    leads: [],
+  }));
+};
+
+const computeContactsFromHubSpot = async (tenantId: string, store: DashboardStore): Promise<void> => {
+  if (isMuted(hubspotSyncMutedUntil, tenantId)) {
+    resetContactsState(store);
+    return;
+  }
+
+  const mapContactsIntoStore = (rows: Array<{ id: string; properties?: Record<string, string | null> }>): void => {
     if (rows.length === 0) {
       console.info('[hubspot-sync] completed: no contacts returned', { tenantId });
+      resetContactsState(store);
       return;
     }
 
@@ -1153,11 +1225,11 @@ const computeContactsFromHubSpot = async (tenantId: string, store: DashboardStor
       return {
         id: row.id,
         name,
-        company: (props['company'] ?? '').trim() || 'Unknown',
+        company: toDisplayCompany(props, email),
         stage,
         leadScore,
-        lastEnriched: 'just now',
-        risk: null,
+        lastEnriched: toRelativeTime(props),
+        risk: toRisk(props),
       };
     });
 
@@ -1182,18 +1254,190 @@ const computeContactsFromHubSpot = async (tenantId: string, store: DashboardStor
       if (col.stage === 'CUSTOMER') return { ...col, count: customerCount };
       return col;
     });
+
     console.info('[hubspot-sync] completed', {
       tenantId,
       fetched: rows.length,
       mapped: mapped.length,
       sample: mapped.slice(0, 3).map(c => ({ id: c.id, name: c.name, stage: c.stage, leadScore: c.leadScore })),
     });
+  };
+
+  try {
+    let accessToken = (await getSecret(`hubspot-access-${tenantId}`)).trim();
+    if (!accessToken) {
+      if (shouldLogHubspot(tenantId, 'missing_token')) {
+        console.warn('[hubspot-sync] skipped: missing access token', { tenantId });
+      }
+      mute(hubspotSyncMutedUntil, tenantId, HUBSPOT_SYNC_COOLDOWN_MS);
+      resetContactsState(store);
+      return;
+    }
+
+    try {
+      const rows = await new HubSpotContacts(accessToken).listContacts(100);
+      mapContactsIntoStore(rows);
+      return;
+    } catch (initialError) {
+      const initialMsg = initialError instanceof Error ? initialError.message : String(initialError);
+      const isUnauthorized = /\b401\b/.test(initialMsg);
+      if (!isUnauthorized) throw initialError;
+
+      // Access token likely expired — refresh using stored refresh token and retry once.
+      const refreshToken = (await getSecret(`hubspot-refresh-${tenantId}`)).trim();
+      if (!refreshToken) throw initialError;
+
+      const refreshed = await HubSpotAuth.refreshToken(refreshToken);
+      accessToken = refreshed.accessToken.trim();
+      if (!accessToken) throw initialError;
+
+      await setSecret(`hubspot-access-${tenantId}`, accessToken);
+      const rows = await new HubSpotContacts(accessToken).listContacts(100);
+      mapContactsIntoStore(rows);
+      return;
+    }
   } catch (error) {
-    console.error('[hubspot-sync] failed', {
-      tenantId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    // If HubSpot token is unavailable or API fails, keep existing seeded contacts.
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isUnauthorized = /\b401\b/.test(errorMessage);
+
+    if (shouldLogHubspot(tenantId, isUnauthorized ? '401' : 'sync_error')) {
+      console.error('[hubspot-sync] failed', {
+        tenantId,
+        error: errorMessage,
+      });
+    }
+
+    // If credentials are invalid (401), back off further attempts for this tenant.
+    if (isUnauthorized) {
+      mute(hubspotSyncMutedUntil, tenantId, HUBSPOT_SYNC_COOLDOWN_MS);
+    }
+
+    // Never keep stale contact data when HubSpot sync fails.
+    resetContactsState(store);
+  }
+};
+
+const computeKpisFromDb = async (tenantId: string, store: DashboardStore): Promise<void> => {
+  if (!process.env['DATABASE_URL']?.trim()) return;
+  try {
+    // Posts generated: content pages count for this tenant
+    const pagesCount = await db
+      .select({ n: count() })
+      .from(contentPages)
+      .where(eq(contentPages.tenantId, tenantId));
+    const postsGenerated = Number(pagesCount[0]?.n ?? 0);
+    if (postsGenerated > 0) store.kpis.postsGenerated = postsGenerated;
+
+    // Leads captured: hs_contacts count for this tenant
+    const contactsCount = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(eq(hsContacts.tenantId, tenantId));
+    const leadsCaptured = Number(contactsCount[0]?.n ?? 0);
+    // Also use live contacts array length if HubSpot was synced this request
+    store.kpis.leadsCaptured = Math.max(leadsCaptured, store.contacts.all.length);
+
+    // MRR: sum of payments in the last 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const mrrRows = await db
+      .select({ total: sum(payments.amount) })
+      .from(payments)
+      .where(and(eq(payments.tenantId, tenantId), gte(payments.createdAt, thirtyDaysAgo)));
+    const mrr = Math.round(Number(mrrRows[0]?.total ?? 0) / 100);
+    if (mrr > 0) store.kpis.mrr = mrr;
+
+    // Billing history: last 12 payments ordered by newest first
+    const payRows = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.tenantId, tenantId))
+      .orderBy(desc(payments.createdAt))
+      .limit(12);
+    if (payRows.length > 0) {
+      store.settings.billingHistory = payRows.map(p => ({
+        date: new Date(p.createdAt ?? Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        amount: `$${(p.amount / 100).toFixed(2)}`,
+        status: p.status.charAt(0).toUpperCase() + p.status.slice(1),
+      }));
+    }
+  } catch {
+    // DB unavailable — retain current kpi values
+  }
+};
+
+const computeKbDocumentsFromDb = async (tenantId: string, store: DashboardStore): Promise<void> => {
+  if (!process.env['DATABASE_URL']?.trim()) return;
+  try {
+    const rows = await db
+      .select()
+      .from(kbDocumentsTable)
+      .where(eq(kbDocumentsTable.tenantId, tenantId))
+      .orderBy(desc(kbDocumentsTable.createdAt))
+      .limit(20);
+    if (rows.length > 0) {
+      store.kbDocuments = rows.map(r => {
+        const rawCategory = r.category ?? 'product-docs';
+        const category: KnowledgeDoc['category'] =
+          rawCategory === 'brand' ? 'brand'
+          : rawCategory === 'competitor-intel' ? 'competitor-intel'
+          : 'product-docs';
+        const wordCount = r.content ? Math.round(r.content.split(/\s+/).length) : 0;
+        const createdAt = r.createdAt ?? new Date();
+        const diffDays = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+        const updated = diffDays === 0 ? 'Updated today' : diffDays === 1 ? 'Updated 1d ago' : `Updated ${diffDays}d ago`;
+        return {
+          id: r.id,
+          category,
+          title: r.name,
+          words: wordCount > 0 ? `${wordCount.toLocaleString()} words` : '—',
+          updated,
+          actionLabel: (category === 'brand' ? 'Edit' : 'Re-train') as KnowledgeDoc['actionLabel'],
+        };
+      });
+    }
+  } catch {
+    // DB unavailable — retain current kbDocuments
+  }
+};
+
+const computeOrgMembersFromDb = async (orgId: string | undefined, store: DashboardStore): Promise<void> => {
+  if (!orgId || !process.env['DATABASE_URL']?.trim()) return;
+  try {
+    const rows = await db
+      .select({
+        memberId: orgMembersTable.id,
+        userId: orgMembersTable.userId,
+        role: orgMembersTable.role,
+        name: users.name,
+        email: users.email,
+      })
+      .from(orgMembersTable)
+      .leftJoin(users, eq(orgMembersTable.userId, users.id))
+      .where(eq(orgMembersTable.orgId, orgId))
+      .limit(50);
+    if (rows.length > 0) {
+      store.orgMembers = rows.map(r => {
+        const name = r.name ?? r.email ?? r.userId;
+        const initials = name.trim().split(/\s+/).map((p: string) => p[0] ?? '').join('').slice(0, 2).toUpperCase() || '?';
+        return {
+          id: r.memberId,
+          initials,
+          name: r.name ?? r.email ?? r.userId,
+          email: r.email ?? '',
+          role: r.role.charAt(0).toUpperCase() + r.role.slice(1),
+        };
+      });
+    }
+  } catch {
+    // DB unavailable — retain current orgMembers
+  }
+};
+
+// Update active agents KPI from running autopilot tasks
+const refreshActiveAgentsKpi = (store: DashboardStore): void => {
+  const runningCount = store.autopilot.tasks.filter(t => t.status === 'running').length;
+  if (runningCount > 0) {
+    store.kpis.activeAgents = runningCount;
   }
 };
 
@@ -1288,6 +1532,109 @@ const computeIntegrationStatus = async (tenant: Tenant): Promise<IntegrationItem
   });
 };
 
+// ── Tenant context assembly from current store state ────────────────────────────
+const assembleTenantContext = (store: DashboardStore, tenant: Tenant): TenantAgentContext => {
+  // Derive siteUrl from tenant name; fall back to tenant id slug.
+  const domainBase = tenant.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'workspace';
+  const siteUrl = `https://${domainBase}.com`;
+
+  // Keywords: mine from KB document titles if available, else use defaults.
+  const kbKeywords = store.kbDocuments
+    .filter(d => d.category === 'product-docs')
+    .flatMap(d => d.title.toLowerCase().split(/\s+/))
+    .filter(w => w.length > 4)
+    .slice(0, 5);
+  const targetKeywords = kbKeywords.length >= 3
+    ? kbKeywords
+    : ['ai marketing automation', 'b2b saas marketing', 'marketing ai agents'];
+
+  // Contact counts from live contacts (populated by HubSpot sync).
+  const contacts = store.contacts.all;
+  const mqls = contacts.filter(c => c.stage === 'MQL').length;
+  const sqls = contacts.filter(c => c.stage === 'SQL').length;
+
+  // HubSpot connectivity from real integration status check.
+  const hubspotEntry = store.settings.integrations.find(i => i.name === 'HubSpot CRM');
+  const hubspotConnected = hubspotEntry?.statusText?.startsWith('Connected') ?? false;
+
+  return {
+    siteUrl,
+    targetKeywords,
+    contactCount: contacts.length,
+    mqls,
+    sqls,
+    hubspotConnected,
+  };
+};
+
+// ── Post-run DB persistence + tool adapters ───────────────────────────────────
+const persistAutopilotRun = async (
+  tenantId: string,
+  result:   AutopilotResult,
+): Promise<void> => {
+  if (!process.env['DATABASE_URL']?.trim()) return;
+  try {
+    // 1. Batch-insert all execution records (idempotent via onConflictDoNothing).
+    if (result.executions.length > 0) {
+      await Promise.all(
+        result.executions.map(exec =>
+          db.insert(agentExecutions).values({
+            id:            exec.id,
+            tenantId:      exec.tenantId,
+            agentType:     exec.agentType,
+            model:         exec.model,
+            status:        exec.status,
+            inputSummary:  exec.inputSummary  ?? null,
+            outputSummary: exec.outputSummary ?? null,
+            durationMs:    exec.durationMs,
+            error:         exec.error         ?? null,
+            fairnessScore: exec.fairnessScore  ?? null,
+          }).onConflictDoNothing()
+        ),
+      );
+    }
+
+    // 2. Tool adapters — persist agent output artifacts as KB documents.
+    const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const artifactMap: Partial<Record<AgentType, { title: string; category: string }>> = {
+      keyword_researcher: { title: `Keyword Opportunities — ${today}`, category: 'product-docs' },
+      workspace_reporter: { title: `Workspace Report — ${today}`,       category: 'product-docs' },
+      backlink_outreach:  { title: `Backlink Outreach Plan — ${today}`,  category: 'competitor-intel' },
+    };
+
+    for (const [agentType, artifact] of Object.entries(artifactMap) as Array<[AgentType, { title: string; category: string }]>) {
+      const exec = result.executions.find(
+        e => e.agentType === agentType && e.status === 'success' && e.outputSummary,
+      );
+      if (!exec) continue;
+      await db.insert(kbDocumentsTable).values({
+        id:       uid('kb'),
+        tenantId,
+        name:     artifact.title,
+        content:  exec.outputSummary!,
+        category: artifact.category,
+      }).onConflictDoNothing();
+    }
+  } catch (err) {
+    // Non-fatal: persistence failure must never crash the autopilot run.
+    console.error('[autopilot-persist] failed:', err instanceof Error ? err.message : String(err));
+  }
+};
+
+const syncPlatformStatusFromIntegrations = (store: DashboardStore): void => {
+  const integrationStatuses = new Map(store.settings.integrations.map(item => [item.name, item.statusText]));
+
+  store.settings.platformStatus = [
+    { name: 'Vercel Edge', status: 'Operational' },
+    { name: 'Neon Database', status: 'Operational' },
+    { name: 'Upstash Redis', status: integrationStatuses.get('Upstash Redis')?.includes('Fallback') ? 'Operational (Fallback)' : 'Operational' },
+    { name: 'Anthropic API', status: integrationStatuses.get('Anthropic Claude API')?.startsWith('Connected') ? 'Operational' : 'Disconnected' },
+    { name: 'Azure Key Vault', status: integrationStatuses.get('Azure Key Vault')?.startsWith('Connected') ? 'Connected' : 'Disconnected' },
+    { name: 'LinkedIn', status: integrationStatuses.get('LinkedIn')?.startsWith('Connected') ? 'Connected' : 'Disconnected' },
+    { name: 'HubSpot CRM', status: integrationStatuses.get('HubSpot CRM')?.startsWith('Connected') ? 'Connected' : 'Disconnected' },
+  ];
+};
+
 const toResponse = (store: DashboardStore) => {
   return {
     testsPassedLabel: store.testsPassedLabel,
@@ -1334,6 +1681,7 @@ export async function GET() {
   // Fetch real integration status
   try {
     store.settings.integrations = await computeIntegrationStatus(tenant);
+    syncPlatformStatusFromIntegrations(store);
   } catch (e) {
     // Fallback to seed integrations if computation fails
     console.warn('Failed to compute integration status', e);
@@ -1341,6 +1689,10 @@ export async function GET() {
 
   await computeContactsFromHubSpot(tenant.id, store);
   await computeAnalyticsFromDb(tenant.id, store);
+  await computeKpisFromDb(tenant.id, store);
+  await computeKbDocumentsFromDb(tenant.id, store);
+  await computeOrgMembersFromDb(tenant.orgId, store);
+  refreshActiveAgentsKpi(store);
   await setTenantDashboardState(tenant.id, store);
   return NextResponse.json(toResponse(store));
 }
@@ -1393,9 +1745,16 @@ export async function POST(req: NextRequest) {
     await setTenantDashboardState(tenant.id, store);
 
     try {
+      // Assemble real tenant context so agents receive actual site/keyword/contact data.
+      const tenantCtx = assembleTenantContext(store, tenant);
+
       const result = await runAutopilot(tenant, {
         shouldStop: () => store.autopilot.stopRequested || store.autopilot.paused,
+        context:    tenantCtx,
       });
+
+      // Persist executions to DB and write agent output artifacts as KB docs.
+      await persistAutopilotRun(tenant.id, result);
 
       const succeeded = result.succeeded;
       store.autopilot.lastRunSummary = {
@@ -1404,7 +1763,8 @@ export async function POST(req: NextRequest) {
         hitlPending: store.hitlQueue.length,
         durationText: `${Math.max(1, Math.round(result.durationMs / 60000))}m`,
       };
-      store.autopilot.nextRunAt = Date.now() + 6 * 60 * 60 * 1000;
+      // US-001: daily autopilot — next run in 24 hours.
+      store.autopilot.nextRunAt = Date.now() + 24 * 60 * 60 * 1000;
 
       store.kpis.activeAgents = Math.min(AGENT_COUNT, Math.max(1, succeeded));
       store.kpis.postsGenerated += Math.max(1, succeeded);
@@ -1645,12 +2005,47 @@ export async function POST(req: NextRequest) {
     }
   };
 
+  const extractBestBodyCandidate = (value: string): string => {
+    const normalized = normalizeGeneratedJson(value);
+    const matches = [...normalized.matchAll(/"body"\s*:\s*"([\s\S]*?)"/gi)];
+    if (matches.length === 0) return '';
+
+    const candidates = matches
+      .map(match => (match[1] ?? '')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .trim())
+      .filter(Boolean);
+
+    if (candidates.length === 0) return '';
+
+    const score = (candidate: string): number => {
+      const alphaChars = (candidate.match(/[A-Za-z]/g) ?? []).length;
+      const jsonNoisePenalty = (candidate.match(/"(?:title|slug|body)"\s*:/gi) ?? []).length * 120;
+      const bracePenalty = (candidate.match(/[{}]/g) ?? []).length * 140;
+      const truncatedPenalty = /\{\s*$/.test(candidate) ? 220 : 0;
+      const sentenceBonus = (candidate.match(/[.!?]/g) ?? []).length * 12;
+      return alphaChars + sentenceBonus - jsonNoisePenalty - bracePenalty - truncatedPenalty;
+    };
+
+    return candidates.sort((a, b) => score(b) - score(a))[0] ?? '';
+  };
+
   const pickGeneratedBody = (parsed: Record<string, unknown>, fallback: string): string => {
     const directBody = typeof parsed['body'] === 'string' ? trimWrappedText(parsed['body']) : '';
     const nested = directBody ? parseNestedGeneratedDraft(directBody) : null;
     const nestedBody = typeof nested?.['body'] === 'string' ? trimWrappedText(nested['body']) : '';
     if (nestedBody) return nestedBody;
-    if (directBody && !directBody.startsWith('{')) return directBody;
+
+    const hasNestedJsonMarkers = /\n\s*\{\s*$/.test(directBody)
+      || /"(?:title|slug|body)"\s*:/i.test(directBody)
+      || /\{\s*"title"/i.test(directBody);
+    if (directBody && !directBody.startsWith('{') && !hasNestedJsonMarkers) return directBody;
+
+    const bestCandidate = extractBestBodyCandidate(fallback);
+    if (bestCandidate) return bestCandidate;
 
     const fallbackParsed = parseNestedGeneratedDraft(fallback);
     const fallbackBody = typeof fallbackParsed?.['body'] === 'string'
@@ -1660,6 +2055,51 @@ export async function POST(req: NextRequest) {
   };
 
   const trimWrappedText = (value: string): string => value.trim().replace(/^['"]+|['"]+$/g, '').trim();
+
+  const sanitizeGeneratedBodyText = (value: string, title: string): string => {
+    const normalized = stripCodeFence(value)
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
+      .replace(/\r\n/g, '\n')
+      .trim();
+
+    // Remove one-line JSON payload echoes that models sometimes prepend/append.
+    const withoutInlinePayloads = normalized.replace(
+      /\{\s*"title"\s*:[\s\S]*?"slug"\s*:[\s\S]*?"body"\s*:[\s\S]*?\}\s*/gi,
+      '\n',
+    );
+
+    const lines = withoutInlinePayloads.split('\n');
+    const droppedMetadataLines = lines.filter((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return true;
+      if (line === '{' || line === '}' || line === '},' || line === '{,') return false;
+      if (/^"?title"?\s*:\s*/i.test(line)) return false;
+      if (/^"?slug"?\s*:\s*/i.test(line)) return false;
+      if (/^"?body"?\s*:\s*$/i.test(line)) return false;
+      if (/^"?body"?\s*:\s*"?$/i.test(line)) return false;
+      return true;
+    });
+
+    const deDuplicated = droppedMetadataLines.filter((rawLine, index, arr) => {
+      const line = rawLine.trim().replace(/^"|"$/g, '');
+      if (!line) return true;
+
+      const normalizedTitle = title.trim().toLowerCase();
+      const comparable = line.toLowerCase().replace(/[\s]+/g, ' ').trim();
+      if (normalizedTitle && comparable === normalizedTitle) {
+        return arr.findIndex(candidate => candidate.trim().toLowerCase() === comparable) === index;
+      }
+
+      return true;
+    });
+
+    return deDuplicated
+      .join('\n')
+      .replace(/^\s*[,]+\s*$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^\s+|\s+$/g, '');
+  };
 
   const toSlug = (value: string): string => value
     .toLowerCase()
@@ -1701,8 +2141,8 @@ export async function POST(req: NextRequest) {
     return `<p>${escapeHtml(lines.join(' '))}</p>`;
   };
 
-  const normalizeBodyHtml = (value: string): string => {
-    const cleaned = trimWrappedText(stripCodeFence(value));
+  const normalizeBodyHtml = (value: string, title: string): string => {
+    const cleaned = sanitizeGeneratedBodyText(trimWrappedText(value), title);
     if (!cleaned) return '<p>No article content was generated.</p>';
     if (hasRichHtml(cleaned)) return cleaned;
 
@@ -1736,7 +2176,7 @@ export async function POST(req: NextRequest) {
     .trim();
 
   const renderCmsArticleTemplate = (title: string, rawBody: string): string => {
-    let articleHtml = normalizeBodyHtml(rawBody);
+    let articleHtml = normalizeBodyHtml(rawBody, title);
     articleHtml = applyInlineStyle(articleHtml, 'h2', 'margin:32px 0 12px;font-size:30px;line-height:1.2;color:#102132;font-weight:700;');
     articleHtml = applyInlineStyle(articleHtml, 'h3', 'margin:24px 0 10px;font-size:24px;line-height:1.3;color:#16324a;font-weight:700;');
     articleHtml = applyInlineStyle(articleHtml, 'p', 'margin:0 0 18px;font-size:18px;line-height:1.85;color:#334155;');
@@ -1757,6 +2197,78 @@ export async function POST(req: NextRequest) {
       `<section style="font-family:Georgia,\'Times New Roman\',serif;">${articleHtml}</section>`,
       '</article>',
     ].join('');
+  };
+
+  type PublishReview = {
+    approved: boolean;
+    score: number | null;
+    reasons: string[];
+  };
+
+  const parseAgentJson = (value: string): Record<string, unknown> | null => {
+    const normalized = value
+      .replace(/^\s*```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim();
+
+    const candidates = [normalized];
+    const objectMatch = normalized.match(/\{[\s\S]*\}/);
+    if (objectMatch && objectMatch[0] !== normalized) {
+      candidates.push(objectMatch[0]);
+    }
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  };
+
+  const reviewBeforePublish = async (
+    channel: 'cms' | 'linkedin',
+    title: string,
+    content: string,
+  ): Promise<PublishReview> => {
+    const systemPrompt = `You are a strict brand and policy reviewer.
+Return JSON only:
+{"approved":true,"brandConsistencyScore":88,"flags":[],"summary":"ok"}`;
+    const userPrompt = JSON.stringify({
+      channel,
+      title,
+      content: trunc(content, 6000),
+    });
+
+    try {
+      const result = await runAgentCall(
+        'brand_voice_enforcer',
+        tenant.tier as Tier,
+        systemPrompt,
+        userPrompt,
+      );
+      const parsed = parseAgentJson(result.output);
+      const scoreValue = Number(parsed?.['brandConsistencyScore']);
+      const score = Number.isFinite(scoreValue) ? scoreValue : null;
+      const flags = Array.isArray(parsed?.['flagged'])
+        ? parsed?.['flagged']
+        : Array.isArray(parsed?.['flags'])
+          ? parsed?.['flags']
+          : [];
+      const explicitlyRejected = parsed?.['approved'] === false;
+      const reasons = flags.map(item => String(item)).slice(0, 3);
+
+      const approved = !explicitlyRejected
+        && flags.length === 0
+        && (score === null || score >= 70);
+
+      return { approved, score, reasons };
+    } catch {
+      // Fail-open for ship readiness: publishing should not hard fail if reviewer is unavailable.
+      return { approved: true, score: null, reasons: [] };
+    }
   };
 
   if (body.action === 'generateCmsDraft') {
@@ -1821,6 +2333,14 @@ Return ONLY valid JSON in this exact shape — no markdown, no extra text:
       return NextResponse.json({ error: 'title, slug, and htmlBody are required' }, { status: 400 });
     }
 
+    const review = await reviewBeforePublish('cms', title, toPlainText(htmlBody));
+    if (!review.approved) {
+      return NextResponse.json({
+        error: 'Publish blocked by AI review. Please edit content and retry.',
+        review,
+      }, { status: 409 });
+    }
+
     try {
       const schemaJson = body.schemaJson ?? {
         '@context': 'https://schema.org',
@@ -1841,7 +2361,7 @@ Return ONLY valid JSON in this exact shape — no markdown, no extra text:
       store.feedItems = [
         {
           id: `cms_${Date.now()}`,
-          message: `**cms_publish** ${provider} published "${title}"`,
+          message: `**cms_publish** ${provider} published "${title}"${review.score !== null ? ` (review ${review.score})` : ''}`,
           time: 'just now · cms publish',
           type: 'teal' as const,
         },
@@ -1881,6 +2401,14 @@ Return ONLY valid JSON in this exact shape — no markdown, no extra text:
       return NextResponse.json({ error: 'This social post has already been published' }, { status: 409 });
     }
 
+    const review = await reviewBeforePublish('linkedin', 'LinkedIn post', postBody);
+    if (!review.approved) {
+      return NextResponse.json({
+        error: 'LinkedIn post blocked by AI review. Please edit and retry.',
+        review,
+      }, { status: 409 });
+    }
+
     try {
       const accessToken = await getSecret(`linkedin-access-${tenant.id}`);
       const memberId = await getSecret(`linkedin-member-id-${tenant.id}`);
@@ -1918,7 +2446,7 @@ Return ONLY valid JSON in this exact shape — no markdown, no extra text:
       store.feedItems = [
         {
           id: `linkedin_${Date.now()}`,
-          message: `**linkedin_poster** published post (${result.id})`,
+          message: `**linkedin_poster** published post (${result.id})${review.score !== null ? ` (review ${review.score})` : ''}`,
           time: 'just now · linkedin publish',
           type: 'green' as const,
         },

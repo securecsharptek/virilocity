@@ -245,6 +245,48 @@ interface DashboardApiResponse {
   };
 }
 
+type A2AStepStatus = 'queued' | 'running' | 'success' | 'failed' | 'skipped';
+type A2ASessionStatus = 'active' | 'completed' | 'failed';
+
+type A2AStep = {
+  id: string;
+  agent: string;
+  status: A2AStepStatus;
+  startedAt?: string;
+  finishedAt?: string;
+  outputSummary?: string;
+  error?: string;
+};
+
+type A2AMessage = {
+  id: string;
+  role: 'system' | 'orchestrator' | 'agent';
+  agent?: string;
+  content: string;
+  createdAt: string;
+};
+
+type A2ASession = {
+  id: string;
+  tenantId: string;
+  orchestrator: string;
+  agents: string[];
+  goal: string;
+  status: A2ASessionStatus;
+  messages: A2AMessage[];
+  steps: A2AStep[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CampaignHistoryEntry = {
+  sessionId: string;
+  siteUrl: string;
+  keywords: string;
+  status: A2ASessionStatus;
+  launchedAt: string;
+};
+
 type OrgMember = {
   id: string;
   initials: string;
@@ -739,12 +781,12 @@ export default function DashboardClient() {
   const [autopilotPaused, setAutopilotPaused] = useState(false);
   const [countdownText, setCountdownText] = useState('02:04:03');
   const [kpis, setKpis] = useState({
-    activeAgents: 12,
-    postsGenerated: 47,
-    leadsCaptured: 284,
-    mrr: 8320,
+    activeAgents: 0,
+    postsGenerated: 0,
+    leadsCaptured: 0,
+    mrr: 0,
   });
-  const [feedItems, setFeedItems] = useState<FeedItem[]>(FEED_ITEMS);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [autopilotTasks, setAutopilotTasks] = useState<TaskScheduleItem[]>(AUTOPILOT_TASKS);
   const [hitlQueueItems, setHitlQueueItems] = useState<HITLQueueItem[]>(HITL_QUEUE_ITEMS);
   const [agentCards, setAgentCards] = useState<AgentCard[]>(AGENT_CARDS);
@@ -755,28 +797,28 @@ export default function DashboardClient() {
   const [conversionFunnel, setConversionFunnel] = useState<FunnelStage[]>(CONVERSION_FUNNEL);
   const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueSegment[]>(REVENUE_BREAKDOWN);
   const [abTests, setAbTests] = useState<ABTest[]>(AB_TESTS);
-  const [contacts, setContacts] = useState<Contact[]>(CONTACTS);
-  const [pipelineCols, setPipelineCols] = useState<PipelineCol[]>(PIPELINE_COLS);
-  const [segments, setSegments] = useState<Segment[]>(SEGMENTS);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [pipelineCols, setPipelineCols] = useState<PipelineCol[]>([]);
+  const [segments, setSegments] = useState<Segment[]>([]);
   const [contactsSummary, setContactsSummary] = useState({
-    totalSynced: 284,
-    pipelineValue: '$142K',
-    activeSegments: 6,
+    totalSynced: 0,
+    pipelineValue: '$0',
+    activeSegments: 0,
   });
-  const [billingHistory, setBillingHistory] = useState<BillingHistoryItem[]>(BILLING_HISTORY);
+  const [billingHistory, setBillingHistory] = useState<BillingHistoryItem[]>([]);
   const [platformStatuses, setPlatformStatuses] = useState<PlatformStatusItem[]>(PLATFORM_STATUS);
   const [integrations, setIntegrations] = useState<IntegrationItem[]>(INTEGRATIONS);
   const [socialPosts, setSocialPosts] = useState<SocialPost[]>(SOCIAL_POSTS);
   const [tevvControls, setTevvControls] = useState<TevvControlItem[]>(TEVV_CONTROLS);
   const [authItems, setAuthItems] = useState<AuthItem[]>(AUTH_ITEMS);
   const [lastRunSummary, setLastRunSummary] = useState({
-    completedTasks: 34,
-    postsCreated: 58,
-    hitlPending: 3,
-    durationText: '02:18',
+    completedTasks: 0,
+    postsCreated: 0,
+    hitlPending: 0,
+    durationText: '—',
   });
   const [userProfile, setUserProfile] = useState({ name: '', initials: '', email: '', tenant: '', tier: 'free' });
-  const [kbDocuments, setKbDocuments] = useState<KnowledgeDoc[]>(KNOWLEDGE_BASE_DOCS);
+  const [kbDocuments, setKbDocuments] = useState<KnowledgeDoc[]>([]);
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
   const [agentsTotal, setAgentsTotal] = useState(39);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -798,6 +840,20 @@ export default function DashboardClient() {
   const [editSocialPost, setEditSocialPost] = useState<SocialPost | null>(null);
   const [editSocialBody, setEditSocialBody] = useState('');
   const [editSocialSaving, setEditSocialSaving] = useState(false);
+  const [a2aSiteUrl, setA2aSiteUrl] = useState('https://example.com');
+  const [a2aKeywordsInput, setA2aKeywordsInput] = useState('ai marketing automation, seo platform');
+  const [a2aLaunchLoading, setA2aLaunchLoading] = useState(false);
+  const [a2aSessionId, setA2aSessionId] = useState('');
+  const [a2aSessionStatus, setA2aSessionStatus] = useState<A2ASessionStatus | null>(null);
+  const [a2aSteps, setA2aSteps] = useState<A2AStep[]>([]);
+  const [a2aMessages, setA2aMessages] = useState<A2AMessage[]>([]);
+  const [a2aError, setA2aError] = useState<string | null>(null);
+  const [campaignHistory, setCampaignHistory] = useState<CampaignHistoryEntry[]>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('virilocity_campaign_history') : null;
+      return raw ? (JSON.parse(raw) as CampaignHistoryEntry[]) : [];
+    } catch { return []; }
+  });
   
   // Agent filter state
   const [agentFilterStatus, setAgentFilterStatus] = useState<'all' | 'running' | 'idle' | 'hitl'>('all');
@@ -824,6 +880,9 @@ export default function DashboardClient() {
 
   const integrationRows: IntegrationItem[] = integrations.filter(item => item.name !== 'WordPress CMS');
   const connectedIntegrations = integrationRows.filter(item => item.statusText.toLowerCase().startsWith('connected')).length;
+  const hubspotConnected = integrations.some(
+    item => item.name === 'HubSpot CRM' && item.statusText.toLowerCase().startsWith('connected'),
+  );
   const isLightTheme = theme === 'light';
 
   const integrationActionConfig: Record<string, { label: string; href?: string; enabled: boolean }> = {
@@ -1069,8 +1128,9 @@ export default function DashboardClient() {
   useEffect(() => {
     void refreshDashboardData(false);
     const poll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
       void refreshDashboardData(true);
-    }, 5000);
+    }, 15000);
 
     return () => window.clearInterval(poll);
   }, []);
@@ -1207,6 +1267,176 @@ export default function DashboardClient() {
       result?: { succeeded: number; totalTasks: number };
     };
   };
+
+  const fetchA2ASession = async (sessionId: string) => {
+    const res = await fetch(`/api/a2a/session?sessionId=${encodeURIComponent(sessionId)}`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(err?.error ?? 'Failed to load A2A session');
+    }
+
+    const body = (await res.json()) as { ok?: boolean; session?: A2ASession };
+    if (!body.ok || !body.session) {
+      throw new Error('Invalid A2A session response');
+    }
+
+    setA2aSessionStatus(body.session.status);
+    setA2aSteps(body.session.steps ?? []);
+    setA2aMessages(body.session.messages ?? []);
+    return body.session;
+  };
+
+  const handleLaunchDeepSeoCampaign = async () => {
+    const normalizedKeywords = a2aKeywordsInput
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    if (normalizedKeywords.length === 0) {
+      toast.error('Please enter at least one target keyword.');
+      return;
+    }
+
+    setA2aLaunchLoading(true);
+    setA2aError(null);
+
+    try {
+      const idem = `deep-seo-${a2aSiteUrl.trim().toLowerCase()}-${normalizedKeywords.join('|').toLowerCase()}`.slice(0, 120);
+      const res = await fetch('/api/seo/campaign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-idempotency-key': idem,
+        },
+        body: JSON.stringify({
+          siteUrl: a2aSiteUrl.trim(),
+          targetKeywords: normalizedKeywords,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? 'Failed to start deep SEO campaign');
+      }
+
+      const body = (await res.json()) as {
+        ok?: boolean;
+        sessionId?: string;
+        status?: A2ASessionStatus;
+        reused?: boolean;
+      };
+
+      if (!body.ok || !body.sessionId) {
+        throw new Error('Invalid campaign launch response');
+      }
+
+      setA2aSessionId(body.sessionId);
+      setA2aSessionStatus(body.status ?? 'active');
+      await fetchA2ASession(body.sessionId);
+
+      // Persist to campaign history
+      const histEntry: CampaignHistoryEntry = {
+        sessionId: body.sessionId,
+        siteUrl: a2aSiteUrl.trim(),
+        keywords: a2aKeywordsInput,
+        status: body.status ?? 'active',
+        launchedAt: new Date().toISOString(),
+      };
+      setCampaignHistory(prev => {
+        const next = [histEntry, ...prev.filter(e => e.sessionId !== body.sessionId)].slice(0, 10);
+        try { localStorage.setItem('virilocity_campaign_history', JSON.stringify(next)); } catch { /* ignore */ }
+        return next;
+      });
+
+      if (body.reused) {
+        toast.success('Deep SEO session reused from idempotency key.');
+      } else {
+        toast.success('Deep SEO campaign started. Monitoring live progress...');
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to start deep SEO campaign';
+      setA2aError(msg);
+      toast.error(msg);
+    } finally {
+      setA2aLaunchLoading(false);
+    }
+  };
+
+  const handleLoadCampaignSession = async (entry: CampaignHistoryEntry) => {
+    setA2aSiteUrl(entry.siteUrl);
+    setA2aKeywordsInput(entry.keywords);
+    setA2aSessionId(entry.sessionId);
+    setA2aSessionStatus(entry.status);
+    setA2aError(null);
+    try {
+      await fetchA2ASession(entry.sessionId);
+    } catch (e) {
+      setA2aError(e instanceof Error ? e.message : 'Failed to load session');
+    }
+  };
+
+  const updateHistoryStatus = (sessionId: string, status: A2ASessionStatus) => {
+    setCampaignHistory(prev => {
+      const next = prev.map(e => e.sessionId === sessionId ? { ...e, status } : e);
+      try { localStorage.setItem('virilocity_campaign_history', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!a2aSessionId) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pollCount = 0;
+    const maxPolls = 120; // 6 minutes at 3s intervals
+
+    const stopPolling = () => {
+      cancelled = true;
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const poll = async () => {
+      if (cancelled) return;
+      pollCount += 1;
+      if (pollCount > maxPolls) {
+        stopPolling();
+        toast.info('Campaign monitoring paused after 6 minutes. Use Refresh or relaunch to check latest status.');
+        return;
+      }
+
+      try {
+        const session = await fetchA2ASession(a2aSessionId);
+        if (cancelled) return;
+
+        if (session.status === 'completed') {
+          stopPolling();
+          updateHistoryStatus(a2aSessionId, 'completed');
+          toast.success('Deep SEO campaign completed.');
+        } else if (session.status === 'failed') {
+          stopPolling();
+          updateHistoryStatus(a2aSessionId, 'failed');
+          toast.error('Deep SEO campaign failed. Review step errors.');
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setA2aError(error instanceof Error ? error.message : 'Session polling failed');
+      }
+    };
+
+    void poll();
+    timer = window.setInterval(() => { void poll(); }, 3000) as unknown as ReturnType<typeof setTimeout>;
+
+    return stopPolling;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [a2aSessionId]);
 
   const handleRunAutopilot = async () => {
     try {
@@ -1514,6 +1744,11 @@ export default function DashboardClient() {
                   active={activeAgentsLever === 'scheduled'}
                   onClick={() => setActiveAgentsLever('scheduled')}
                 />
+                <Lever
+                  label="Campaigns"
+                  active={activeAgentsLever === 'campaigns'}
+                  onClick={() => setActiveAgentsLever('campaigns')}
+                />
               </div>
             </div>
           )}
@@ -1599,12 +1834,23 @@ export default function DashboardClient() {
           {/* Content Area */}
           <div className="min-h-[560px] px-5 py-[22px] bg-gradient-to-b from-[rgba(0,8,20,0.58)] to-[rgba(0,4,12,0.4)]">
             {dashboardLoadState === 'loading' && (
-              <GlassCard className="mb-4 px-4 py-3 border-[rgba(14,124,123,0.28)] bg-[rgba(14,124,123,0.08)]">
-                <div className="font-mono text-[10px] text-[rgba(14,200,198,0.82)] uppercase tracking-[2px]">
-                  Loading section data...
+              <div className="mb-4 space-y-3" aria-label="Loading dashboard sections">
+                <Skeleton className="h-10 rounded-xl" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  <Skeleton className="h-24 rounded-2xl" />
+                  <Skeleton className="h-24 rounded-2xl" />
+                  <Skeleton className="h-24 rounded-2xl" />
+                  <Skeleton className="h-24 rounded-2xl" />
                 </div>
-              </GlassCard>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
+                  <Skeleton className="lg:col-span-2 h-52 rounded-2xl" />
+                  <Skeleton className="h-52 rounded-2xl" />
+                </div>
+                <Skeleton className="h-48 rounded-2xl" />
+              </div>
             )}
+
+            <div className={dashboardLoadState === 'loading' ? 'opacity-0 pointer-events-none select-none h-0 overflow-hidden' : ''}>
 
             {dashboardLoadState === 'error' && (
               <GlassCard className="mb-4 px-4 py-3 border-[rgba(210,85,85,0.35)] bg-[rgba(95,20,20,0.2)]">
@@ -1835,7 +2081,7 @@ export default function DashboardClient() {
                           {countdownText}
                         </div>
                         <div className="font-mono text-[11px] text-[rgba(255,255,255,0.45)] mb-6 leading-relaxed">
-                          Every 6 hrs · CRON: 0 */6 * * * · NEXT: {nextRunUtcLabel} UTC
+                          Every 24 hrs · CRON: 0 6 * * * · NEXT: {nextRunUtcLabel} UTC
                         </div>
                         <div className="flex justify-center gap-3">
                           <button
@@ -1891,6 +2137,7 @@ export default function DashboardClient() {
                         </div>
                       </div>
                     </GlassCard>
+
                   </div>
 
                   {/* Right: Task Schedule */}
@@ -2565,6 +2812,376 @@ export default function DashboardClient() {
               </div>
             )}
 
+            {activeTab === 'agents' && activeAgentsLever === 'campaigns' && (
+              <div className="space-y-6">
+                <GlassCard variant="teal" className="p-6">
+                  <div className="mb-5">
+                    <div className="font-mono text-[11px] tracking-[2.5px] text-[rgba(14,200,198,0.7)] uppercase mb-1">Deep SEO Campaign</div>
+                    <div className="text-[13px] text-[rgba(200,225,245,0.55)]">Run a 5-agent SEO chain: keyword research → content generation → audit → backlinks → knowledge base.</div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <label className="block">
+                      <div className="font-mono text-[9px] text-[rgba(255,255,255,0.45)] uppercase mb-1.5 tracking-[2px]">Site URL</div>
+                      <input
+                        value={a2aSiteUrl}
+                        onChange={event => setA2aSiteUrl(event.target.value)}
+                        placeholder="https://example.com"
+                        className="w-full rounded-lg border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]"
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="font-mono text-[9px] text-[rgba(255,255,255,0.45)] uppercase mb-1.5 tracking-[2px]">Target Keywords (comma-separated)</div>
+                      <input
+                        value={a2aKeywordsInput}
+                        onChange={event => setA2aKeywordsInput(event.target.value)}
+                        placeholder="ai marketing automation, seo platform"
+                        className="w-full rounded-lg border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => { void handleLaunchDeepSeoCampaign(); }}
+                      disabled={a2aLaunchLoading}
+                      className="px-6 py-2.5 rounded-full bg-gradient-to-br from-[rgba(14,124,123,0.72)] to-[rgba(0,60,60,0.8)] border border-[rgba(14,200,198,0.42)] text-[rgba(14,200,198,1)] font-bold text-[12px] tracking-wide shadow-[0_4px_16px_rgba(0,0,0,0.4),0_0_24px_rgba(14,124,123,0.3)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.45),0_0_35px_rgba(14,124,123,0.5)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {a2aLaunchLoading ? 'Launching…' : '▶ Launch Campaign'}
+                    </button>
+                    {a2aSessionId ? (
+                      <div className="font-mono text-[9.5px] text-[rgba(255,255,255,0.42)]">
+                        Session: <span className="text-[rgba(14,200,198,0.88)]">{a2aSessionId}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </GlassCard>
+
+                {/* ── Recent Campaign History ── */}
+                {campaignHistory.length > 0 ? (
+                  <GlassCard className="p-5">
+                    <div className="font-mono text-[10px] tracking-[2px] text-[rgba(255,255,255,0.4)] uppercase mb-3">Recent Campaigns</div>
+                    <div className="space-y-2">
+                      {campaignHistory.slice(0, 5).map(entry => {
+                        const isActive = entry.sessionId === a2aSessionId;
+                        const statusColor =
+                          entry.status === 'completed' ? 'rgba(14,200,198,0.9)'
+                          : entry.status === 'failed' ? 'rgba(255,120,120,0.9)'
+                          : 'rgba(255,210,90,0.9)';
+                        return (
+                          <div key={entry.sessionId}
+                            className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 ${isActive ? 'border-[rgba(14,200,198,0.35)] bg-[rgba(14,124,123,0.1)]' : 'border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)]'}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="font-mono text-[10.5px] text-[rgba(220,235,255,0.82)] truncate">{entry.siteUrl}</div>
+                              <div className="font-mono text-[9px] text-[rgba(180,200,220,0.45)] truncate mt-0.5">{entry.keywords}</div>
+                              <div className="font-mono text-[8.5px] text-[rgba(180,200,220,0.3)] mt-0.5">
+                                {new Date(entry.launchedAt).toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="font-mono text-[8.5px] uppercase tracking-[1px]" style={{ color: statusColor }}>{entry.status}</div>
+                              {!isActive ? (
+                                <button
+                                  onClick={() => { void handleLoadCampaignSession(entry); }}
+                                  className="font-mono text-[8px] uppercase tracking-[1px] px-2 py-1 rounded border border-[rgba(14,200,198,0.3)] text-[rgba(14,200,198,0.75)] hover:bg-[rgba(14,124,123,0.2)] transition-colors"
+                                >
+                                  Load
+                                </button>
+                              ) : (
+                                <div className="font-mono text-[8px] uppercase tracking-[1px] text-[rgba(14,200,198,0.5)]">Active</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </GlassCard>
+                ) : null}
+
+                {a2aError ? (
+                  <GlassCard className="px-5 py-4 border-[rgba(255,90,90,0.3)] bg-[rgba(100,20,20,0.2)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,160,160,0.95)]">{a2aError}</div>
+                  </GlassCard>
+                ) : null}
+
+                {a2aSessionStatus ? (
+                  <GlassCard className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="font-mono text-[10px] tracking-[2px] text-[rgba(255,255,255,0.4)] uppercase">Campaign Progress</div>
+                      <div className="font-mono text-[9px] uppercase tracking-[1.5px] px-2.5 py-1 rounded-full border"
+                        style={{
+                          color: a2aSessionStatus === 'completed' ? 'rgba(14,200,198,0.95)' : a2aSessionStatus === 'failed' ? 'rgba(255,120,120,0.9)' : 'rgba(255,210,90,0.95)',
+                          borderColor: a2aSessionStatus === 'completed' ? 'rgba(14,200,198,0.35)' : a2aSessionStatus === 'failed' ? 'rgba(255,90,90,0.35)' : 'rgba(201,168,76,0.45)',
+                          background: a2aSessionStatus === 'completed' ? 'rgba(14,124,123,0.12)' : a2aSessionStatus === 'failed' ? 'rgba(120,30,30,0.2)' : 'rgba(55,38,0,0.18)',
+                        }}
+                      >
+                        {a2aSessionStatus}
+                      </div>
+                    </div>
+
+                    {a2aSteps.length > 0 ? (
+                      <div className="space-y-3 mb-5">
+                        {a2aSteps.map(step => {
+                          const AGENT_LABELS: Record<string, string> = {
+                            keyword_researcher: 'Keyword Researcher',
+                            geo_content_generator: 'Geo Content Generator',
+                            seo_auditor: 'SEO Auditor',
+                            backlink_outreach: 'Backlink Outreach',
+                            knowledge_base_curator: 'Knowledge Base Curator',
+                          };
+                          const AGENT_ICONS: Record<string, string> = {
+                            keyword_researcher: '🔍',
+                            geo_content_generator: '🌍',
+                            seo_auditor: '📊',
+                            backlink_outreach: '🔗',
+                            knowledge_base_curator: '📚',
+                          };
+                          const label = AGENT_LABELS[step.agent] ?? step.agent.replace(/_/g, ' ');
+                          const icon = AGENT_ICONS[step.agent] ?? '🤖';
+
+                          // Parse output, stripping markdown fences
+                          let parsed: Record<string, unknown> | null = null;
+                          if (step.outputSummary) {
+                            try {
+                              let raw = step.outputSummary.trim();
+                              raw = raw.replace(/^```(?:json|JSON)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
+                              parsed = JSON.parse(raw) as Record<string, unknown>;
+                            } catch { /* not JSON, ignore */ }
+                          }
+
+                          const statusColor = step.status === 'success' ? 'rgba(14,200,198,0.9)' : step.status === 'failed' ? 'rgba(255,120,120,0.9)' : step.status === 'running' ? 'rgba(255,210,90,0.9)' : 'rgba(180,200,220,0.35)';
+                          const statusBg = step.status === 'success' ? 'rgba(14,124,123,0.15)' : step.status === 'failed' ? 'rgba(120,30,30,0.2)' : step.status === 'running' ? 'rgba(55,38,0,0.18)' : 'rgba(255,255,255,0.04)';
+                          const statusBorder = step.status === 'success' ? 'rgba(14,200,198,0.25)' : step.status === 'failed' ? 'rgba(255,90,90,0.3)' : step.status === 'running' ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.07)';
+                          const statusIcon = step.status === 'running' ? '⟳' : step.status === 'success' ? '✓' : step.status === 'failed' ? '✗' : '·';
+
+                          // ── Agent-specific structured output renderers ───────
+                          const renderOutput = () => {
+                            if (!parsed) {
+                              if (!step.outputSummary) return null;
+                              return (
+                                <div className="px-4 pb-4">
+                                  <p className="text-[11px] text-[rgba(200,225,245,0.65)] leading-relaxed">{step.outputSummary}</p>
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'keyword_researcher') {
+                              const opps = (parsed.opportunities as Array<{keyword:string;currentPosition:number;searchVolume:number;difficulty:number;priority:string;contentBrief:string}>) ?? [];
+                              const total = (parsed.totalOpportunities as number) ?? opps.length;
+                              const gain = (parsed.estimatedMonthlyTrafficGain as number) ?? null;
+                              return (
+                                <div className="px-4 pb-4 space-y-3">
+                                  <div className="flex gap-4">
+                                    <div className="text-center"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Opportunities</div></div>
+                                    {gain ? <div className="text-center"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">+{gain.toLocaleString()}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Est. Monthly Visits</div></div> : null}
+                                  </div>
+                                  <div className="space-y-2">
+                                    {opps.slice(0, 5).map((o, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.2)] p-3">
+                                        <div className="flex items-center justify-between mb-1.5">
+                                          <span className="font-mono text-[10.5px] text-[rgba(220,235,255,0.88)] font-semibold">{o.keyword}</span>
+                                          <span className="font-mono text-[8px] uppercase tracking-[1px] px-2 py-0.5 rounded-full" style={{ background: o.priority === 'high' ? 'rgba(14,124,123,0.3)' : 'rgba(80,60,0,0.3)', color: o.priority === 'high' ? 'rgba(14,200,198,0.95)' : 'rgba(255,210,90,0.9)' }}>{o.priority}</span>
+                                        </div>
+                                        <div className="flex gap-4 mb-2">
+                                          <span className="font-mono text-[9px] text-[rgba(180,200,220,0.55)]">Pos <span className="text-[rgba(255,210,90,0.9)]">#{o.currentPosition}</span></span>
+                                          <span className="font-mono text-[9px] text-[rgba(180,200,220,0.55)]">Vol <span className="text-[rgba(14,200,198,0.8)]">{o.searchVolume?.toLocaleString()}</span></span>
+                                          <span className="font-mono text-[9px] text-[rgba(180,200,220,0.55)]">KD <span className="text-[rgba(200,225,245,0.7)]">{o.difficulty}</span></span>
+                                        </div>
+                                        <p className="text-[10px] text-[rgba(180,200,220,0.6)] leading-relaxed line-clamp-2">{o.contentBrief}</p>
+                                      </div>
+                                    ))}
+                                    {opps.length > 5 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center">+{opps.length - 5} more keywords</div> : null}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'geo_content_generator') {
+                              const regions = (parsed.regions as Array<{locale:string;city:string;headline:string;metaDescription:string;bodyExcerpt:string;targetKeyword:string}>) ?? [];
+                              const total = (parsed.totalPages as number) ?? regions.length;
+                              return (
+                                <div className="px-4 pb-4 space-y-3">
+                                  <div className="flex gap-4">
+                                    <div className="text-center"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Geo Pages Generated</div></div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {regions.slice(0, 4).map((r, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.2)] p-3">
+                                        <div className="flex items-center gap-2 mb-1.5">
+                                          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(14,124,123,0.25)] text-[rgba(14,200,198,0.85)]">{r.locale}</span>
+                                          <span className="font-mono text-[10.5px] text-[rgba(220,235,255,0.85)] font-semibold">{r.city}</span>
+                                        </div>
+                                        <div className="text-[11px] text-[rgba(200,225,245,0.8)] mb-1 font-medium">{r.headline}</div>
+                                        {r.metaDescription ? <p className="text-[9.5px] text-[rgba(160,185,210,0.55)] leading-relaxed line-clamp-2">{r.metaDescription}</p> : null}
+                                        {r.bodyExcerpt ? <p className="text-[9.5px] text-[rgba(180,200,220,0.55)] leading-relaxed line-clamp-2 mt-1 italic">{r.bodyExcerpt}</p> : null}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'seo_auditor') {
+                              const score = (parsed.overallScore as number) ?? null;
+                              const cwv = parsed.coreWebVitals as {lcp_s?:number;fid_ms?:number;cls?:number;status?:string} | undefined;
+                              const issues = (parsed.issues as Array<{type:string;page:string;severity:string;recommendation:string}>) ?? [];
+                              const da = (parsed.domainAuthority as number) ?? null;
+                              const scoreColor = score !== null ? (score >= 80 ? 'rgba(14,200,198,0.95)' : score >= 60 ? 'rgba(255,210,90,0.95)' : 'rgba(255,120,120,0.9)') : 'rgba(180,200,220,0.5)';
+                              return (
+                                <div className="px-4 pb-4 space-y-3">
+                                  <div className="flex gap-6 items-end">
+                                    {score !== null ? <div><div className="text-[26px] font-bold leading-none" style={{ color: scoreColor }}>{score}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-0.5">SEO Score</div></div> : null}
+                                    {da !== null ? <div><div className="text-[18px] font-bold text-[rgba(200,180,255,0.9)]">{da}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Domain Authority</div></div> : null}
+                                    {cwv ? <div className="flex gap-3">
+                                      {cwv.lcp_s !== undefined ? <div className="text-center"><div className="font-mono text-[11px] font-bold" style={{ color: cwv.lcp_s <= 2.5 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.lcp_s}s</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.3)] uppercase">LCP</div></div> : null}
+                                      {cwv.cls !== undefined ? <div className="text-center"><div className="font-mono text-[11px] font-bold" style={{ color: cwv.cls <= 0.1 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.cls}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.3)] uppercase">CLS</div></div> : null}
+                                      {cwv.fid_ms !== undefined ? <div className="text-center"><div className="font-mono text-[11px] font-bold" style={{ color: cwv.fid_ms <= 100 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.fid_ms}ms</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.3)] uppercase">FID</div></div> : null}
+                                    </div> : null}
+                                  </div>
+                                  {issues.length > 0 ? (
+                                    <div className="space-y-1.5">
+                                      <div className="font-mono text-[8px] tracking-[2px] text-[rgba(255,255,255,0.3)] uppercase">Issues Found ({issues.length})</div>
+                                      {issues.slice(0, 5).map((iss, i) => (
+                                        <div key={i} className="flex gap-2.5 rounded-md border border-[rgba(255,255,255,0.05)] bg-[rgba(0,0,0,0.2)] px-3 py-2">
+                                          <span className="font-mono text-[8px] px-1.5 py-0.5 rounded shrink-0 mt-0.5" style={{ background: iss.severity === 'high' ? 'rgba(120,30,30,0.4)' : iss.severity === 'medium' ? 'rgba(80,55,0,0.4)' : 'rgba(30,50,80,0.4)', color: iss.severity === 'high' ? 'rgba(255,120,120,0.9)' : iss.severity === 'medium' ? 'rgba(255,210,90,0.9)' : 'rgba(100,180,255,0.8)' }}>{iss.severity}</span>
+                                          <div className="min-w-0">
+                                            <div className="font-mono text-[9px] text-[rgba(200,225,245,0.75)]">{iss.type?.replace(/_/g, ' ')}</div>
+                                            <div className="text-[9px] text-[rgba(160,185,210,0.55)] truncate">{iss.page}</div>
+                                            {iss.recommendation ? <div className="text-[9px] text-[rgba(180,200,220,0.6)] mt-0.5 line-clamp-1">{iss.recommendation}</div> : null}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {issues.length > 5 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center">+{issues.length - 5} more issues</div> : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'backlink_outreach') {
+                              const targets = (parsed.targets as Array<{domain:string;domainAuthority:number;emailSubject:string;emailBody:string;status:string}>) ?? [];
+                              const drafted = (parsed.drafted as number) ?? targets.length;
+                              const responseRate = (parsed.estimatedResponseRate as number) ?? null;
+                              return (
+                                <div className="px-4 pb-4 space-y-3">
+                                  <div className="flex gap-5">
+                                    <div className="text-center"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">{drafted}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Outreach Drafted</div></div>
+                                    {responseRate ? <div className="text-center"><div className="text-[18px] font-bold text-[rgba(255,210,90,0.9)]">{Math.round(responseRate * 100)}%</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Est. Response Rate</div></div> : null}
+                                  </div>
+                                  <div className="space-y-2">
+                                    {targets.slice(0, 4).map((t, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.2)] p-3">
+                                        <div className="flex items-center justify-between mb-1.5">
+                                          <span className="font-mono text-[10.5px] text-[rgba(14,200,198,0.88)]">{t.domain}</span>
+                                          <span className="font-mono text-[9px] text-[rgba(200,180,255,0.75)]">DA {t.domainAuthority}</span>
+                                        </div>
+                                        {t.emailSubject ? <div className="text-[10px] text-[rgba(220,235,255,0.75)] font-medium mb-1">"{t.emailSubject}"</div> : null}
+                                        {t.emailBody ? <p className="text-[9.5px] text-[rgba(160,185,210,0.55)] leading-relaxed line-clamp-2">{t.emailBody}</p> : null}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'knowledge_base_curator') {
+                              const entries = (parsed.entries as Array<{title:string;category:string;summary:string;tags:string[]}>) ?? [];
+                              const total = (parsed.totalCreated as number) ?? entries.length;
+                              return (
+                                <div className="px-4 pb-4 space-y-3">
+                                  <div className="text-center w-fit"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">KB Entries Created</div></div>
+                                  <div className="space-y-2">
+                                    {entries.slice(0, 5).map((e, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.2)] p-3">
+                                        <div className="flex items-center gap-2 mb-1.5">
+                                          <span className="font-mono text-[8px] px-1.5 py-0.5 rounded bg-[rgba(80,40,120,0.35)] text-[rgba(180,140,255,0.85)]">{e.category?.replace(/_/g, ' ')}</span>
+                                          <span className="text-[10.5px] text-[rgba(220,235,255,0.85)] font-medium">{e.title}</span>
+                                        </div>
+                                        <p className="text-[9.5px] text-[rgba(180,200,220,0.6)] leading-relaxed line-clamp-2">{e.summary}</p>
+                                        {e.tags?.length ? (
+                                          <div className="flex flex-wrap gap-1 mt-1.5">
+                                            {e.tags.slice(0, 4).map((tag, ti) => (
+                                              <span key={ti} className="font-mono text-[7.5px] px-1.5 py-0.5 rounded bg-[rgba(14,124,123,0.18)] text-[rgba(14,200,198,0.65)]">#{tag}</span>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // Generic fallback — key/value grid for unknown agents
+                            const topLevelEntries = Object.entries(parsed).filter(([, v]) => typeof v !== 'object' || v === null).slice(0, 8);
+                            return topLevelEntries.length > 0 ? (
+                              <div className="px-4 pb-4 grid grid-cols-2 gap-2">
+                                {topLevelEntries.map(([k, v]) => (
+                                  <div key={k} className="rounded-md bg-[rgba(0,0,0,0.2)] px-3 py-2">
+                                    <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1px] mb-0.5">{k.replace(/_/g, ' ')}</div>
+                                    <div className="font-mono text-[11px] text-[rgba(200,225,245,0.82)]">{String(v)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null;
+                          };
+
+                          return (
+                            <div key={step.id} className="rounded-xl border overflow-hidden" style={{ borderColor: statusBorder, background: statusBg }}>
+                              {/* Step header */}
+                              <div className="flex items-center justify-between px-4 py-3">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="text-[14px]">{icon}</span>
+                                  <div>
+                                    <div className="text-[11.5px] text-[rgba(220,235,255,0.9)] font-semibold">{label}</div>
+                                    {step.startedAt && step.finishedAt ? (
+                                      <div className="font-mono text-[8px] text-[rgba(180,200,220,0.35)] mt-0.5">
+                                        {Math.round((new Date(step.finishedAt).getTime() - new Date(step.startedAt).getTime()) / 1000)}s
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                                <div className="font-mono text-[8.5px] uppercase tracking-[1.5px] flex items-center gap-1.5 px-2.5 py-1 rounded-full border" style={{ color: statusColor, borderColor: statusBorder }}>
+                                  <span>{statusIcon}</span><span>{step.status}</span>
+                                </div>
+                              </div>
+                              {/* Structured output */}
+                              {parsed || step.outputSummary ? (
+                                <div className="border-t border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.18)] pt-3">
+                                  {renderOutput()}
+                                </div>
+                              ) : null}
+                              {/* Error */}
+                              {step.error ? (
+                                <div className="border-t border-[rgba(255,90,90,0.2)] px-4 py-3 bg-[rgba(100,20,20,0.15)]">
+                                  <div className="font-mono text-[8px] tracking-[2px] text-[rgba(255,120,120,0.6)] uppercase mb-1">Error</div>
+                                  <div className="font-mono text-[9px] text-[rgba(255,160,160,0.85)] leading-relaxed">{step.error}</div>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {a2aMessages.length > 0 ? (
+                      <div>
+                        <div className="font-mono text-[8.5px] tracking-[2px] text-[rgba(255,255,255,0.28)] uppercase mb-2">Agent Log</div>
+                        <div className="rounded-lg border border-[rgba(255,255,255,0.07)] bg-[rgba(0,0,0,0.28)] p-3 max-h-[220px] overflow-y-auto space-y-1.5">
+                          {a2aMessages.slice(-12).map(msg => (
+                            <div key={msg.id} className="font-mono text-[9.5px] text-[rgba(210,228,248,0.65)] leading-relaxed">
+                              <span className="text-[rgba(14,200,198,0.75)]">[{msg.role}{msg.agent ? `:${msg.agent}` : ''}]</span>{' '}{msg.content}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </GlassCard>
+                ) : null}
+              </div>
+            )}
+
             {activeTab === 'analytics' && activeAnalyticsLever === 'traffic' && (
               <div>
                 {!isAnalyticsTrafficLoading && (analyticsChannels.length === 0 || analyticsTopPages.length === 0) ? (
@@ -3123,10 +3740,21 @@ export default function DashboardClient() {
             {activeTab === 'content' && activeContentLever === 'kb' && (
               <div>
                 {kbDocuments.length === 0 ? (
-                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
-                      Knowledge Base is empty. Upload your first document to start training.
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center">
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2">
+                      Knowledge Base Is Empty
                     </div>
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)] mb-5">
+                      Upload your first document to start training content and research agents.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowKbUpload(true)}
+                      className="inline-flex items-center gap-2 rounded-full font-mono text-[11px] tracking-[1px] text-[rgba(14,200,198,0.95)] hover:bg-[rgba(14,200,198,0.12)] transition-colors"
+                      style={{ border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
+                    >
+                      + Upload Document
+                    </button>
                   </GlassCard>
                 ) : null}
 
@@ -3456,12 +4084,41 @@ export default function DashboardClient() {
 
             {activeTab === 'contacts' && activeContactsLever === 'all' && (
               <div>
-                {contacts.length === 0 ? (
-                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
-                      No contacts are available for this tenant yet.
+                {contacts.length === 0 && dashboardLoadState !== 'loading' ? (
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center">
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2">
+                      No Contacts Synced
                     </div>
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)] mb-5">
+                      {hubspotConnected
+                        ? 'HubSpot is connected, but no contacts were returned yet. Trigger a new sync or verify HubSpot contact visibility/scopes.'
+                        : 'Connect HubSpot to automatically sync and enrich your contacts.'}
+                    </div>
+                    {hubspotConnected ? (
+                      <button
+                        type="button"
+                        onClick={() => { void refreshDashboardData(true); }}
+                        className="inline-flex items-center gap-2 rounded-full font-mono text-[11px] tracking-[1px] text-[rgba(14,200,198,0.95)] hover:bg-[rgba(14,200,198,0.12)] transition-colors"
+                        style={{ border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
+                      >
+                        ↻ Retry Sync
+                      </button>
+                    ) : (
+                      <a
+                        href="/api/hubspot/auth"
+                        className="inline-flex items-center gap-2 rounded-full font-mono text-[11px] tracking-[1px] text-[rgba(14,200,198,0.95)] hover:bg-[rgba(14,200,198,0.12)] transition-colors"
+                        style={{ border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
+                      >
+                        🔵 Connect HubSpot
+                      </a>
+                    )}
                   </GlassCard>
+                ) : contacts.length === 0 && dashboardLoadState === 'loading' ? (
+                  <div className="space-y-2 mb-6">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Skeleton key={i} className="h-14 rounded-xl" />
+                    ))}
+                  </div>
                 ) : null}
 
                 {/* Header */}
@@ -3596,9 +4253,12 @@ export default function DashboardClient() {
             {activeTab === 'contacts' && activeContactsLever === 'pipeline' && (
               <div>
                 {pipelineCols.length === 0 ? (
-                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
-                      Pipeline data is not available.
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(214,174,62,0.3)] bg-[rgba(90,62,10,0.18)] text-center">
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(255,210,90,0.72)] uppercase mb-2">
+                      No Pipeline Data
+                    </div>
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)]">
+                      Pipeline stages will appear after contacts are synced and classified.
                     </div>
                   </GlassCard>
                 ) : null}
@@ -3683,9 +4343,12 @@ export default function DashboardClient() {
             {activeTab === 'contacts' && activeContactsLever === 'segments' && (
               <div>
                 {segments.length === 0 ? (
-                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
-                      No active segments found.
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center">
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2">
+                      No Segments Yet
+                    </div>
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)]">
+                      Segments are created automatically from live contact attributes and agent scoring.
                     </div>
                   </GlassCard>
                 ) : null}
@@ -4106,6 +4769,7 @@ export default function DashboardClient() {
                 </div>
               </div>
             )}
+            </div>
           </div>
 
           {/* Status Bar */}

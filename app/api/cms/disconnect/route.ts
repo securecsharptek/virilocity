@@ -34,7 +34,9 @@ const DISCONNECT_SECRETS: Record<CMSPlatform, string[]> = {
   webflow: [
     'webflow-token-{tenantId}',
     'webflow-site-{tenantId}',
+    'webflow-site-name-{tenantId}',
     'webflow-collection-{tenantId}',
+    'webflow-collection-name-{tenantId}',
   ],
   hubspot: [
     'hs-cms-token-{tenantId}',

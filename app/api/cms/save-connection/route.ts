@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { authenticate, authErrorToHttp } from '@/lib/auth/middleware';
-import { setSecret } from '@/lib/auth/keyvault';
+import { getSecret, setSecret } from '@/lib/auth/keyvault';
 import { checkRateLimit } from '@/lib/cache/ratelimit';
 
 export const runtime = 'nodejs';
@@ -20,13 +20,13 @@ type CmsSession = {
 } | null;
 
 type SaveRule = {
-  fields: string[];
+  requiredFields: string[];
   secretMap: Record<string, string[]>;
 };
 
 const SAVE_RULES: Record<CMSPlatform, SaveRule> = {
   wordpress: {
-    fields: ['siteUrl', 'username', 'appPassword'],
+    requiredFields: ['siteUrl', 'username', 'appPassword'],
     secretMap: {
       siteUrl: ['wp-url-{tenantId}', 'wordpress-api-url-{tenantId}'],
       username: ['wp-user-{tenantId}', 'wordpress-user-{tenantId}'],
@@ -34,7 +34,7 @@ const SAVE_RULES: Record<CMSPlatform, SaveRule> = {
     },
   },
   shopify: {
-    fields: ['storeUrl', 'adminApiToken', 'blogId'],
+    requiredFields: ['storeUrl', 'adminApiToken', 'blogId'],
     secretMap: {
       storeUrl: ['shopify-shop-{tenantId}'],
       adminApiToken: ['shopify-token-{tenantId}'],
@@ -42,15 +42,17 @@ const SAVE_RULES: Record<CMSPlatform, SaveRule> = {
     },
   },
   webflow: {
-    fields: ['siteToken', 'siteId', 'collectionId'],
+    requiredFields: ['siteId', 'collectionId'],
     secretMap: {
       siteToken: ['webflow-token-{tenantId}'],
       siteId: ['webflow-site-{tenantId}'],
+      siteName: ['webflow-site-name-{tenantId}'],
       collectionId: ['webflow-collection-{tenantId}'],
+      collectionName: ['webflow-collection-name-{tenantId}'],
     },
   },
   hubspot: {
-    fields: ['cmsApiToken', 'blogId'],
+    requiredFields: ['cmsApiToken', 'blogId'],
     secretMap: {
       cmsApiToken: ['hs-cms-token-{tenantId}'],
       blogId: ['hs-blog-id-{tenantId}'],
@@ -152,12 +154,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const missing = platform === 'hubspot'
     ? []
-    : rule.fields.filter(field => !credentials[field]);
+    : rule.requiredFields.filter(field => !credentials[field]);
   if (missing.length > 0) {
     return NextResponse.json({
       saved: false,
       error: `Missing required fields: ${missing.join(', ')}`,
     }, { status: 400 });
+  }
+
+  if (platform === 'webflow' && !credentials['siteToken']) {
+    const existingToken = (await getSecret(`webflow-token-${tenantId}`)).trim();
+    if (!existingToken) {
+      return NextResponse.json({
+        saved: false,
+        error: 'Webflow OAuth token is missing. Connect Webflow first.',
+      }, { status: 400 });
+    }
   }
 
   if (platform === 'hubspot' && !credentials['cmsApiToken'] && !credentials['blogId']) {

@@ -196,6 +196,27 @@ export const abTests = pgTable('ab_tests', {
   tenantIdx: index('ab_tests_tenant_idx').on(t.tenantId),
 }));
 
+// ── A2A Sessions ──────────────────────────────────────────────────────────────
+export const a2aSessions = pgTable('a2a_sessions', {
+  id:           text('id').primaryKey(),
+  tenantId:     text('tenant_id').notNull(),
+  orchestrator: text('orchestrator').notNull(),
+  agents:       jsonb('agents').notNull().$type<string[]>(),
+  goal:         text('goal').notNull().default(''),
+  status:       text('status').notNull().default('active'), // 'active'|'completed'|'failed'
+  messages:     jsonb('messages').notNull().$type<object[]>().default([]),
+  steps:        jsonb('steps').notNull().$type<object[]>().default([]),
+  metadata:     jsonb('metadata').$type<Record<string, unknown>>(),
+  idempotencyKey: text('idempotency_key'),
+  idempotencyFingerprint: text('idempotency_fingerprint'),
+  expiresAt:    timestamp('expires_at'),
+  createdAt:    timestamp('created_at').defaultNow(),
+  updatedAt:    timestamp('updated_at').defaultNow(),
+}, t => ({
+  tenantIdx:    index('a2a_sessions_tenant_idx').on(t.tenantId),
+  idempotencyIdx: index('a2a_sessions_idempotency_idx').on(t.tenantId, t.idempotencyKey),
+}));
+
 // ── Migration SQL ─────────────────────────────────────────────────────────────
 export const MIGRATION_SQL = `
 -- V16.4 Multicloud Schema (Neon Postgres)

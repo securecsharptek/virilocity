@@ -14,6 +14,8 @@ export interface CMSPlatformStatus {
   connected: boolean;
   statusText: string;
   details?: string;
+  siteName?: string;
+  collectionName?: string;
 }
 
 export interface WordPressVerificationResult {
@@ -157,16 +159,23 @@ const getShopifyStatus = async (tenantId: string): Promise<CMSPlatformStatus> =>
 };
 
 const getWebflowStatus = async (tenantId: string): Promise<CMSPlatformStatus> => {
-  const configured = await hasCmsProviderSecrets(tenantId, [
-    `webflow-token-${tenantId}`,
-    `webflow-collection-${tenantId}`,
+  const [token, siteId, collectionId, siteName, collectionName] = await Promise.all([
+    getSecret(`webflow-token-${tenantId}`).catch(() => ''),
+    getSecret(`webflow-site-${tenantId}`).catch(() => ''),
+    getSecret(`webflow-collection-${tenantId}`).catch(() => ''),
+    getSecret(`webflow-site-name-${tenantId}`).catch(() => ''),
+    getSecret(`webflow-collection-name-${tenantId}`).catch(() => ''),
   ]);
+
+  const configured = Boolean(token && siteId && collectionId);
 
   return {
     provider: 'webflow',
     configured,
     connected: configured,
-    statusText: configured ? 'Configured' : 'Not Configured',
+    statusText: configured ? 'Connected' : 'Not Configured',
+    ...(siteName ? { siteName } : {}),
+    ...(collectionName ? { collectionName } : {}),
   };
 };
 

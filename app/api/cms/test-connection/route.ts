@@ -109,8 +109,9 @@ const testShopify = async (tenantId: string): Promise<{ connected: boolean; erro
 const testWebflow = async (tenantId: string): Promise<{ connected: boolean; error?: string }> => {
   const token = (await getSecret(`webflow-token-${tenantId}`)).trim();
   const siteId = (await getSecret(`webflow-site-${tenantId}`)).trim();
+  const collectionId = (await getSecret(`webflow-collection-${tenantId}`)).trim();
 
-  if (!token || !siteId) return { connected: false, error: 'Missing credentials' };
+  if (!token || !siteId || !collectionId) return { connected: false, error: 'Missing credentials' };
 
   try {
     const res = await fetch(`https://api.webflow.com/v2/sites/${encodeURIComponent(siteId)}`, {

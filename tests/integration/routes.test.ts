@@ -510,6 +510,50 @@ describe('GET/POST /dashboard/data', () => {
     expect(html).not.toContain('"title"');
   });
 
+  it('POST generateCmsDraft strips nested JSON/title-slug artifacts from body', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+    mockRunAgentCall.mockResolvedValueOnce({
+      output: [
+        '{',
+        '  "title": "AI vs Human: Is the Job Crisis Already Here? What You Need to Know",',
+        '  "slug": "ai-vs-human-job-crisis",',
+        '  "body": "Introduction: The Rise of the Machines in the Workplace',
+        '',
+        '{',
+        '“title”: “AI vs Human: Is the Job Crisis Already Here? What You Need to Know”,',
+        '“slug”: “ai-vs-human-job-crisis”,',
+        '“body”: “',
+        'Artificial Intelligence is no longer a concept confined to science fiction films or research labs.',
+        '”',
+        '}',
+        '",',
+        '  "geoScore": 88',
+        '}',
+      ].join('\n'),
+      model: 'mock-model',
+    });
+
+    const res = await dashboardDataPost(makeDashboardReq({
+      action: 'generateCmsDraft',
+      prompt: 'AI vs Human jobs',
+    }));
+
+    expect(res.status).toBe(200);
+
+    const body = await json(res);
+    const draft = body['generatedCmsDraft'] as Record<string, unknown>;
+    const html = String(draft['body'] ?? '');
+
+    expect(draft['slug']).toBe('ai-vs-human-job-crisis');
+    expect(html).toContain('<article');
+    expect(html).toContain('Virilocity AI Article');
+    expect(html).toContain('Artificial Intelligence is no longer a concept confined to science fiction films or research labs.');
+    expect(html).not.toContain('"slug"');
+    expect(html).not.toContain('“slug”');
+    expect(html).not.toContain('{');
+    expect(html).not.toContain('“title”');
+  });
+
   it('POST pauseAutopilot then resumeAutopilot toggles pause state', async () => {
     mockedAuth.mockResolvedValueOnce(dashboardSession);
     const pauseRes = await dashboardDataPost(makeDashboardReq({ action: 'pauseAutopilot' }));
@@ -541,6 +585,31 @@ describe('GET/POST /dashboard/data', () => {
 
     const res = await dashboardDataPost(req);
     expect(res.status).toBe(400);
+  });
+
+  it('POST publishSocialPost blocks publish when AI review flags the content', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+    mockRunAgentCall.mockResolvedValueOnce({
+      output: JSON.stringify({
+        approved: false,
+        brandConsistencyScore: 41,
+        flags: ['tone violation'],
+      }),
+      model: 'mock-model',
+    });
+
+    const req = makeDashboardReq({
+      action: 'publishSocialPost',
+      postChannel: 'linkedin',
+      postBody: 'Spammy content that should be blocked.',
+    });
+
+    const res = await dashboardDataPost(req);
+    expect(res.status).toBe(409);
+
+    const body = await json(res);
+    expect(String(body['error'])).toContain('blocked by AI review');
+    expect(mockLinkedInPostText).not.toHaveBeenCalled();
   });
 
   it('POST publishSocialPost returns 409 when LinkedIn is not connected', async () => {

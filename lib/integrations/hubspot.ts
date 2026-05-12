@@ -95,8 +95,25 @@ export class HubSpotContacts {
   constructor(private readonly accessToken: string) {}
 
   async listContacts(limit = 100): Promise<Array<{ id: string; properties?: Record<string, string | null> }>> {
+    const propertyList = [
+      'email',
+      'firstname',
+      'lastname',
+      'company',
+      'lifecyclestage',
+      'hs_lead_status',
+      'hs_lead_score',
+      'hubspotscore',
+      'hs_predictivecontactscore_v2',
+      'risk',
+      'risk_level',
+      'churn_risk',
+      'churn_risk_score',
+      'lastmodifieddate',
+    ].join(',');
+
     const resp = await fetch(
-      `${HS_BASE}/crm/v3/objects/contacts?limit=${Math.max(1, Math.min(limit, 100))}&properties=email,firstname,lastname,company,lifecyclestage,hs_lead_status,hs_lead_score,hubspotscore`,
+      `${HS_BASE}/crm/v3/objects/contacts?limit=${Math.max(1, Math.min(limit, 100))}&properties=${propertyList}`,
       { headers: { Authorization: `Bearer ${this.accessToken}` } },
     );
     if (!resp.ok) throw new Error(`HubSpot list contacts failed: ${resp.status}`);

@@ -5,7 +5,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { applyFairnessFilter, filterBatch } from '../../lib/ai/fairness';
 import { CONTENT_AGENTS, routeModel }        from '../../lib/ai/client';
 import { withRetry, CircuitBreaker, uid, clamp, trunc, safeJSON } from '../../lib/utils/index';
-import { REDDIT_REQUIRES_HUMAN_APPROVAL, TIER_LIMITS, PRICES, AGENT_COUNT } from '../../lib/types/index';
+import { REDDIT_REQUIRES_HUMAN_APPROVAL, TIER_LIMITS, PRICES, AGENT_COUNT, AGENT_ACTIVATION_PLAN, TIER_ORDER } from '../../lib/types/index';
+import type { AgentType } from '../../lib/types/index';
+import { AUTOPILOT_TASKS } from '../../lib/agents/autopilot';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CONTENT FAIRNESS FILTER (TEVV BIAS)
@@ -161,4 +163,119 @@ describe('Utility helpers', () => {
   it('trunc shortens long strings',            () => { expect(trunc('a'.repeat(300),200).length).toBe(201); expect(trunc('hello',200)).toBe('hello'); });
   it('safeJSON parses valid JSON',             () => expect(safeJSON<{n:number}>('{"n":42}')).toEqual({n:42}));
   it('safeJSON returns null for invalid JSON', () => expect(safeJSON('bad json')).toBeNull());
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// THEME D — AGT-05: Agent activation matrix, model routing, fairness, tier gate
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('AGENT_ACTIVATION_PLAN — 39-agent coverage (AGT-01)', () => {
+  const agents = Object.keys(AGENT_ACTIVATION_PLAN) as AgentType[];
+
+  it('covers exactly 39 agents', () => expect(agents).toHaveLength(AGENT_COUNT));
+
+  it('has exactly 11 autopilot agents', () =>
+    expect(agents.filter(a => AGENT_ACTIVATION_PLAN[a].mode === 'autopilot')).toHaveLength(11));
+
+  it('has exactly 28 on-demand agents', () =>
+    expect(agents.filter(a => AGENT_ACTIVATION_PLAN[a].mode === 'on_demand')).toHaveLength(28));
+
+  it('all AUTOPILOT_TASKS are mode=autopilot', () => {
+    for (const a of AUTOPILOT_TASKS) {
+      expect(AGENT_ACTIVATION_PLAN[a].mode).toBe('autopilot');
+    }
+  });
+
+  it('reddit_manager is hitlGated', () =>
+    expect(AGENT_ACTIVATION_PLAN['reddit_manager'].hitlGated).toBe(true));
+
+  it('no autopilot agent is hitlGated', () => {
+    const bad = AUTOPILOT_TASKS.filter(a => AGENT_ACTIVATION_PLAN[a].hitlGated);
+    expect(bad).toHaveLength(0);
+  });
+
+  it('every agent has a valid minTier', () => {
+    const validTiers = Object.keys(TIER_ORDER);
+    for (const a of agents) {
+      expect(validTiers).toContain(AGENT_ACTIVATION_PLAN[a].minTier);
+    }
+  });
+});
+
+describe('AGENT_ACTIVATION_PLAN — fairness gate alignment (AGT-02)', () => {
+  const fairnessAgents = (['geo_content_generator','ad_creative_generator','email_sequencer',
+    'brand_voice_enforcer','content_repurposer','landing_page_optimizer'] as AgentType[]);
+
+  it('CONTENT_AGENTS and fairness-gated agents in plan match exactly', () => {
+    const planFairness = (Object.keys(AGENT_ACTIVATION_PLAN) as AgentType[])
+      .filter(a => AGENT_ACTIVATION_PLAN[a].hasFairnessGate);
+    for (const a of fairnessAgents) {
+      expect(planFairness).toContain(a);
+    }
+  });
+
+  it('hasFairnessGate is false for all autopilot data/analysis agents', () => {
+    const dataAgents: AgentType[] = ['keyword_researcher','churn_predictor','bid_optimizer','hs_contact_enricher'];
+    for (const a of dataAgents) {
+      expect(AGENT_ACTIVATION_PLAN[a].hasFairnessGate).toBe(false);
+    }
+  });
+});
+
+describe('TIER_ORDER — tier gate enforcement (AGT-03)', () => {
+  it('enterprise has highest order', () =>
+    expect(TIER_ORDER['enterprise']).toBeGreaterThan(TIER_ORDER['scale']));
+
+  it('free has lowest order', () =>
+    expect(TIER_ORDER['free']).toBe(0));
+
+  it('growth > pro > starter > free', () => {
+    expect(TIER_ORDER['growth']).toBeGreaterThan(TIER_ORDER['pro']);
+    expect(TIER_ORDER['pro']).toBeGreaterThan(TIER_ORDER['starter']);
+    expect(TIER_ORDER['starter']).toBeGreaterThan(TIER_ORDER['free']);
+  });
+
+  it('free-tier agents accessible at free', () => {
+    const freeTierAgents = (Object.keys(AGENT_ACTIVATION_PLAN) as AgentType[])
+      .filter(a => AGENT_ACTIVATION_PLAN[a].minTier === 'free');
+    expect(freeTierAgents.length).toBeGreaterThan(0);
+    for (const a of freeTierAgents) {
+      expect(TIER_ORDER['free']).toBeGreaterThanOrEqual(TIER_ORDER[AGENT_ACTIVATION_PLAN[a].minTier]);
+    }
+  });
+
+  it('growth-tier agents NOT accessible at starter', () => {
+    const growthAgents = (Object.keys(AGENT_ACTIVATION_PLAN) as AgentType[])
+      .filter(a => AGENT_ACTIVATION_PLAN[a].minTier === 'growth');
+    expect(growthAgents.length).toBeGreaterThan(0);
+    for (const a of growthAgents) {
+      expect(TIER_ORDER['starter']).toBeLessThan(TIER_ORDER[AGENT_ACTIVATION_PLAN[a].minTier]);
+    }
+  });
+});
+
+describe('routeModel() — expanded agent set (AGT-05)', () => {
+  it('enterprise always gets opus for on-demand agents', () => {
+    const onDemand: AgentType[] = ['cvr_optimizer','lead_scorer','competitor_tracker','market_researcher'];
+    for (const a of onDemand) {
+      expect(routeModel(a, 'enterprise')).toContain('opus');
+    }
+  });
+
+  it('haiku agents route to haiku on pro tier', () => {
+    const haikuAgents: AgentType[] = ['knowledge_base_curator','workspace_reporter','trend_detector'];
+    for (const a of haikuAgents) {
+      expect(routeModel(a, 'pro')).toContain('haiku');
+    }
+  });
+
+  it('on-demand content agents get sonnet on growth tier', () => {
+    const contentAgents: AgentType[] = ['ad_creative_generator','content_repurposer','landing_page_optimizer'];
+    for (const a of contentAgents) {
+      expect(routeModel(a, 'growth')).toContain('sonnet');
+    }
+  });
+
+  it('HITL gated agent (reddit_manager) still routes to haiku on pro', () =>
+    expect(routeModel('reddit_manager', 'pro')).toContain('haiku'));
 });
