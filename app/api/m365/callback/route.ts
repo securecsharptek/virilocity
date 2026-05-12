@@ -46,7 +46,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   await storeM365Token(stateCheck.tenantId, {
     accessToken: tokenResult.accessToken,
-    refreshToken: tokenResult.refreshToken,
     expiresOn: tokenResult.expiresOn ?? null,
     scope: tokenResult.scopes?.join(' ') ?? '',
   });

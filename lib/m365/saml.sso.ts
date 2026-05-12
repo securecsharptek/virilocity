@@ -34,6 +34,8 @@ const parseRelayState = (relayState: string): {
   if (parts.length !== 5) return null;
 
   const [tenantId, redirectPath, tsRaw, requestId, sig] = parts;
+  if (!tenantId || !redirectPath || !tsRaw || !requestId || !sig) return null;
+
   const ts = Number(tsRaw);
   if (!Number.isFinite(ts)) return null;
 

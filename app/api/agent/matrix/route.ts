@@ -9,20 +9,20 @@ import { authenticate, authErrorToHttp } from '../../../../lib/auth/middleware';
 import {
   AGENT_ACTIVATION_PLAN,
   TIER_ORDER,
-  AUTOPILOT_TASKS,
 } from '../../../../lib/types/index';
 import type { AgentType, Tier } from '../../../../lib/types/index';
 
 export const runtime = 'nodejs';
 
-// Re-export for use in tests
-export { AGENT_ACTIVATION_PLAN };
-
 // Agents eligible for this tenant given their tier
 const eligibleForTier = (agentTier: Tier, tenantTier: Tier): boolean =>
   TIER_ORDER[tenantTier] >= TIER_ORDER[agentTier];
 
-const AUTOPILOT_SET = new Set<AgentType>(AUTOPILOT_TASKS);
+const AUTOPILOT_SET = new Set<AgentType>(
+  (Object.entries(AGENT_ACTIVATION_PLAN) as [AgentType, typeof AGENT_ACTIVATION_PLAN[AgentType]][])
+    .filter(([, plan]) => plan.mode === 'autopilot')
+    .map(([agentType]) => agentType),
+);
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const authResult = await authenticate(req.headers.get('authorization'));

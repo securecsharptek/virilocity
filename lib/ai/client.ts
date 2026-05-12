@@ -54,6 +54,10 @@ export const callClaude = async (opts: ClaudeCallOptions): Promise<string> => {
   }
 
   const response = await (anthropic.messages.create as unknown as (params: ClaudeMessageCreateRequest) => Promise<Awaited<ReturnType<typeof anthropic.messages.create>>>)(request);
+  if (!('content' in response) || !Array.isArray(response.content)) {
+    return '';
+  }
+
   return response.content
     .filter(b => b.type === 'text')
     .map(b => (b as { type: 'text'; text: string }).text)

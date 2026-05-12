@@ -133,9 +133,10 @@ const disconnectPlatform = async (platform: CMSPlatform) => {
 
 interface CMSConnectionsProps {
   embedded?: boolean;
+  isLightTheme?: boolean;
 }
 
-export default function CMSConnections({ embedded = false }: CMSConnectionsProps) {
+export default function CMSConnections({ embedded = false, isLightTheme = false }: CMSConnectionsProps) {
   const { data, isLoading, mutate } = useSWR<PlatformsResponse>('/api/cms/platforms', fetcher, {
     revalidateOnFocus: false,
   });
@@ -610,10 +611,10 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
         >
           <div className="flex items-center gap-3 mb-2">
             {/* accent bar */}
-            <div className="w-1 h-8 rounded-full bg-gradient-to-b from-[rgba(14,200,198,0.9)] to-[rgba(14,124,123,0.3)]" />
+            <div className="w-1 h-8 rounded-full" style={isLightTheme ? { background: 'linear-gradient(to-bottom, rgba(143,107,151,0.9), rgba(185,156,190,0.3))' } : { background: 'linear-gradient(to bottom, rgba(14,200,198,0.9), rgba(14,124,123,0.3))' }} />
             <h1
               className="font-sans text-[28px] sm:text-[36px] font-bold tracking-tight"
-              style={{
+              style={isLightTheme ? { color: '#8F6B97' } : {
                 background: 'linear-gradient(135deg, rgba(241,248,252,0.98) 0%, rgba(180,242,241,0.85) 50%, rgba(140,220,218,0.7) 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
@@ -622,7 +623,7 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
               CMS Connections
             </h1>
           </div>
-          <p className="ml-4 mt-1 font-sans text-[14px] text-[rgba(174,198,218,0.72)] max-w-2xl leading-relaxed">
+          <p className="ml-4 mt-1 font-sans text-[14px] max-w-2xl leading-relaxed" style={isLightTheme ? { color: '#8F6B97' } : { color: 'rgba(174,198,218,0.72)' }}>
             Connect your publishing platforms. Virilocity will publish content and inject JSON-LD schema automatically.
           </p>
         </motion.div>
@@ -638,12 +639,12 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.4, delay: i * 0.08 }}
                   className="rounded-2xl p-5 sm:p-6 min-h-[230px] animate-pulse"
-                  style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.4)', border: '1px solid rgba(164,131,174,0.1)' } : { background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
                 >
-                  <div className="w-11 h-11 rounded-xl bg-[rgba(255,255,255,0.08)]" />
-                  <div className="mt-4 h-5 w-28 rounded-lg bg-[rgba(255,255,255,0.07)]" />
-                  <div className="mt-2 h-3.5 w-36 rounded bg-[rgba(255,255,255,0.06)]" />
-                  <div className="mt-auto pt-16 h-10 w-full rounded-xl bg-[rgba(255,255,255,0.08)]" />
+                  <div className="w-11 h-11 rounded-xl" style={isLightTheme ? { background: 'rgba(185,156,190,0.15)' } : { background: 'rgba(255,255,255,0.08)' }} />
+                  <div className="mt-4 h-5 w-28 rounded-lg" style={isLightTheme ? { background: 'rgba(185,156,190,0.12)' } : { background: 'rgba(255,255,255,0.07)' }} />
+                  <div className="mt-2 h-3.5 w-36 rounded" style={isLightTheme ? { background: 'rgba(185,156,190,0.1)' } : { background: 'rgba(255,255,255,0.06)' }} />
+                  <div className="mt-auto pt-16 h-10 w-full rounded-xl" style={isLightTheme ? { background: 'rgba(185,156,190,0.12)' } : { background: 'rgba(255,255,255,0.08)' }} />
                 </motion.div>
               );
             }
@@ -656,6 +657,7 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
                 loading={loadingByPlatform[platform]}
                 onPrimaryAction={handlePrimaryAction}
                 onDisconnect={handleDisconnect}
+                isLightTheme={isLightTheme}
               />
             );
           })}
@@ -675,7 +677,12 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
             whileHover={{ scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
             className="h-10 px-5 rounded-xl font-mono text-[11px] font-bold tracking-wide transition-colors"
-            style={{
+            style={isLightTheme ? {
+              background: 'rgba(185,156,190,0.15)',
+              border: '1px solid rgba(143,107,151,0.4)',
+              color: '#8F6B97',
+              boxShadow: '0 2px 12px rgba(143,107,151,0.12)',
+            } : {
               background: 'linear-gradient(135deg, rgba(201,168,76,0.2), rgba(201,168,76,0.1))',
               border: '1px solid rgba(201,168,76,0.4)',
               color: 'rgba(253,224,71,0.9)',
@@ -687,8 +694,8 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
 
           <div className="flex items-center gap-2">
             <span className="inline-flex h-2 w-2 rounded-full bg-[rgba(74,222,128,0.7)]" />
-            <span className="font-mono text-[11px] text-[rgba(180,200,220,0.7)]">
-              <span className="text-[rgba(134,239,172,0.9)] font-bold">{connectedCount}</span>
+            <span className="font-mono text-[11px]" style={isLightTheme ? { color: '#8F6B97' } : { color: 'rgba(180,200,220,0.7)' }}>
+              <span className="font-bold" style={isLightTheme ? { color: '#A483AE' } : { color: 'rgba(134,239,172,0.9)' }}>{connectedCount}</span>
               {' '}of 4 platforms connected
             </span>
           </div>
@@ -700,7 +707,11 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.6 }}
           className="mt-8 rounded-2xl overflow-hidden"
-          style={{
+          style={isLightTheme ? {
+            background: 'rgba(248,242,252,0.6)',
+            border: '1px solid rgba(164,131,174,0.2)',
+            boxShadow: '0 0 0 1px rgba(164,131,174,0.08) inset, 0 8px 32px rgba(143,107,151,0.08)',
+          } : {
             background: 'linear-gradient(135deg, rgba(14,124,123,0.12) 0%, rgba(8,18,32,0.7) 60%)',
             border: '1px solid rgba(14,200,198,0.2)',
             boxShadow: '0 0 0 1px rgba(255,255,255,0.04) inset, 0 8px 32px rgba(0,0,0,0.4)',
@@ -709,19 +720,19 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
           {/* header bar */}
           <div
             className="px-5 sm:px-6 py-4 border-b"
-            style={{ borderColor: 'rgba(14,200,198,0.12)', background: 'rgba(14,124,123,0.07)' }}
+            style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.2)', background: 'rgba(248,242,252,0.6)' } : { borderColor: 'rgba(14,200,198,0.12)', background: 'rgba(14,124,123,0.07)' }}
           >
             <div className="flex items-center gap-2.5">
               {/* icon */}
               <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-[16px]"
-                style={{ background: 'rgba(14,124,123,0.3)', border: '1px solid rgba(14,200,198,0.3)' }}
+                style={isLightTheme ? { background: 'rgba(185,156,190,0.15)', border: '1px solid rgba(143,107,151,0.3)' } : { background: 'rgba(14,124,123,0.3)', border: '1px solid rgba(14,200,198,0.3)' }}
               >
                 ✦
               </div>
               <div>
-                <h2 className="font-sans text-[16px] font-semibold text-[rgba(241,248,252,0.96)]">AI Content Publisher</h2>
-                <p className="font-sans text-[12px] text-[rgba(160,200,224,0.6)]">
+                <h2 className="font-sans text-[16px] font-semibold" style={isLightTheme ? { color: '#6B4F72' } : { color: 'rgba(241,248,252,0.96)' }}>AI Content Publisher</h2>
+                <p className="font-sans text-[12px]" style={isLightTheme ? { color: '#8F6B97' } : { color: 'rgba(160,200,224,0.6)' }}>
                   Generate &amp; publish AI-written content to any connected platform
                 </p>
               </div>
@@ -738,13 +749,18 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
                   onChange={e => setTopic(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !generateLoading) void handleGenerateDraft(); }}
                   placeholder="e.g. 10 SEO tips for local businesses in 2025"
-                  className="w-full h-11 pl-4 pr-4 rounded-xl font-sans text-[14px] text-[rgba(241,248,252,0.92)] placeholder:text-[rgba(160,192,220,0.38)] focus:outline-none transition-all"
-                  style={{
+                  className="w-full h-11 pl-4 pr-4 rounded-xl font-sans text-[14px] focus:outline-none transition-all"
+                  style={isLightTheme ? {
+                    background: 'rgba(248,242,252,0.8)',
+                    border: '1px solid rgba(164,131,174,0.3)',
+                    color: '#8F6B97',
+                  } : {
                     background: 'rgba(255,255,255,0.05)',
                     border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'rgba(241,248,252,0.92)',
                   }}
-                  onFocus={e => { e.currentTarget.style.borderColor = 'rgba(14,200,198,0.55)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(14,124,123,0.15)'; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.boxShadow = 'none'; }}
+                  onFocus={e => { e.currentTarget.style.borderColor = isLightTheme ? 'rgba(143,107,151,0.6)' : 'rgba(14,200,198,0.55)'; e.currentTarget.style.boxShadow = isLightTheme ? '0 0 0 3px rgba(185,156,190,0.15)' : '0 0 0 3px rgba(14,124,123,0.15)'; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = isLightTheme ? 'rgba(164,131,174,0.3)' : 'rgba(255,255,255,0.1)'; e.currentTarget.style.boxShadow = 'none'; }}
                 />
               </div>
               <motion.button
@@ -755,7 +771,12 @@ export default function CMSConnections({ embedded = false }: CMSConnectionsProps
                 whileHover={{ scale: 1.02 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 20 }}
                 className="h-11 px-5 rounded-xl font-mono text-[12px] font-bold tracking-wide disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap transition-all"
-                style={{
+                style={isLightTheme ? {
+                  background: 'rgba(185,156,190,0.15)',
+                  border: '1px solid rgba(143,107,151,0.4)',
+                  color: '#8F6B97',
+                  boxShadow: generateLoading ? 'none' : '0 4px 16px rgba(143,107,151,0.15)',
+                } : {
                   background: 'linear-gradient(135deg, rgba(14,160,158,0.9), rgba(14,100,100,0.8))',
                   border: '1px solid rgba(14,200,198,0.4)',
                   color: 'rgba(255,255,255,0.95)',

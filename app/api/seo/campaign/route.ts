@@ -251,7 +251,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     sessionResult = await createA2ASession({
       tenantId: authResult.ctx.tenant.id,
-      orchestrator: DEEP_SEO_CHAIN[0],
+      orchestrator: DEEP_SEO_CHAIN[0]!,
       agents: [...DEEP_SEO_CHAIN],
       goal: `Deep SEO campaign for ${siteUrl} targeting: ${targetKeywords.join(', ')}`,
       metadata: {

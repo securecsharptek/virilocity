@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate, authErrorToHttp } from '../../lib/auth/middleware';
 import { buildMcpMetadata, handleMcpRpc, type McpRpcRequest } from '../../lib/mcp/server';
+import type { Tenant } from '../../lib/types/index';
 
 export const runtime = 'nodejs';
 
-const resolveAuth = async (req: NextRequest): Promise<{ ok: true; tenant: Awaited<ReturnType<typeof authenticate>> extends { ok: true; ctx: infer T } ? T['tenant'] : never } | { ok: false; response: NextResponse }> => {
+const resolveAuth = async (req: NextRequest): Promise<{ ok: true; tenant: Tenant } | { ok: false; response: NextResponse }> => {
   const authResult = await authenticate(req.headers.get('authorization'));
   if (!authResult.ok) {
     const [status, body] = authErrorToHttp(authResult.error);

@@ -30,17 +30,17 @@ export default function LandingPage() {
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
         <section
           aria-labelledby="hero-heading"
-          className="bg-navy text-white py-24 px-6 text-center"
+          className="relative overflow-hidden bg-[radial-gradient(circle_at_18%_12%,rgba(100,210,240,0.22),transparent_38%),radial-gradient(circle_at_82%_18%,rgba(245,200,120,0.16),transparent_36%),linear-gradient(160deg,#3a7aaa_0%,#4a96be_42%,#4ab8be_72%,#3d8fa8_100%)] text-white py-24 px-6 text-center"
         >
           {/* WCAG 2.4.6: Descriptive heading */}
-          <h1 id="hero-heading" className="text-5xl font-bold mb-4 leading-tight">
+          <h1 id="hero-heading" className="text-5xl font-bold mb-4 leading-tight drop-shadow-[0_3px_18px_rgba(0,0,0,0.32)]">
             AI-Powered Marketing System.
             <br />
-            <span className="text-teal">Full Autopilot.</span>
+            <span className="text-teal-hi">Full Autopilot.</span>
           </h1>
-          <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
+          <p className="text-xl text-slate-100 mb-8 max-w-2xl mx-auto">
             Starting at just {' '}
-            <strong className="text-gold">${PRICES.starter.monthly}/month</strong>
+            <strong className="text-gold-hi">${PRICES.starter.monthly}/month</strong>
             {' '}— up to 97% more cost-efficient than traditional solutions.
           </p>
 
@@ -57,7 +57,7 @@ export default function LandingPage() {
             </a>
             <a
               href="#b2b-section"
-              className="btn border-2 border-white text-white hover:bg-white/10 text-lg px-8 py-3"
+              className="btn border-2 border-white/90 text-white hover:bg-white/10 text-lg px-8 py-3"
               aria-label="View team and enterprise plans"
             >
               Team Plans

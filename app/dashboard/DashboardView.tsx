@@ -2578,11 +2578,13 @@ export default function DashboardClient() {
               <div>
                 {/* Section Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Currently Running
                   </div>
                   <div className="flex gap-2.5">
-                    <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors">
+                    <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors"
+                      style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                       {runningAgents.length} Active
                     </button>
                   </div>
@@ -2591,11 +2593,14 @@ export default function DashboardClient() {
                 {/* Empty State or Running Agents List */}
                 {runningAgents.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 px-8">
-                    <div className="text-5xl mb-4">⏸</div>
-                    <div className="font-mono text-[13px] font-semibold text-[rgba(255,255,255,0.48)] text-center mb-2">
+                    <div className="text-5xl mb-4"
+                      style={isLightTheme ? { filter: 'grayscale(1) brightness(0.4)' } : undefined}>⏸</div>
+                    <div className="font-mono text-[13px] font-semibold text-[rgba(255,255,255,0.48)] text-center mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                       No Agents Running
                     </div>
-                    <div className="font-mono text-[11px] text-[rgba(255,255,255,0.34)] text-center max-w-md">
+                    <div className="font-mono text-[11px] text-[rgba(255,255,255,0.34)] text-center max-w-md"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                       Autopilot is idle. Click "Run Autopilot" in the Autopilot tab to start the 11-task orchestration pipeline.
                     </div>
                   </div>
@@ -2604,7 +2609,8 @@ export default function DashboardClient() {
                     {/* Running Agents List */}
                     <div className="space-y-3 mb-6">
                       {runningAgents.map((agent) => (
-                    <GlassCard key={agent.id} className="px-5 py-4 border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]">
+                    <GlassCard key={agent.id} className="px-5 py-4 border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]"
+                      style={isLightTheme ? { background: 'rgba(185,156,190,0.08)', borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
                       <div className="flex items-center gap-5">
                         {/* Circular Progress Indicator */}
                         <div className="relative flex-shrink-0">
@@ -2645,17 +2651,20 @@ export default function DashboardClient() {
 
                         {/* Agent Info */}
                         <div className="flex-1 min-w-0">
-                          <div className="font-[Rajdhani] text-[15px] font-bold text-[rgba(255,255,255,0.92)] mb-1.5 leading-tight">
+                          <div className="font-[Rajdhani] text-[15px] font-bold text-[rgba(255,255,255,0.92)] mb-1.5 leading-tight"
+                            style={isLightTheme ? { color: '#6B4F72' } : undefined}>
                             {agent.name}
                           </div>
-                          <div className="font-mono text-[10px] leading-relaxed text-[rgba(255,255,255,0.48)] pr-4">
+                          <div className="font-mono text-[10px] leading-relaxed text-[rgba(255,255,255,0.48)] pr-4"
+                            style={isLightTheme ? { color: '#A483AE' } : undefined}>
                             {agent.taskDescription}
                           </div>
                         </div>
 
                         {/* Running Time Button */}
                         <div className="flex-shrink-0">
-                          <button className="rounded-full border border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.14)] px-4 py-2 font-mono text-[9px] font-medium text-[rgba(14,200,198,0.94)] shadow-[0_0_14px_rgba(14,124,123,0.16),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(14,124,123,0.2)] transition-colors whitespace-nowrap">
+                          <button className="rounded-full border border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.14)] px-4 py-2 font-mono text-[9px] font-medium text-[rgba(14,200,198,0.94)] shadow-[0_0_14px_rgba(14,124,123,0.16),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(14,124,123,0.2)] transition-colors whitespace-nowrap"
+                            style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                             RUNNING - {agent.runningTime}
                           </button>
                         </div>
@@ -2665,17 +2674,28 @@ export default function DashboardClient() {
                 </div>
 
                 {/* Bottom Stats Bar */}
-                <div className="mt-6 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
-                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
-                    <span className="text-[rgba(14,200,198,0.75)]">◉ {runningAgents.length}</span> agents running
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">{testsPassedLabel}</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">TEVV {tevvScore.toFixed(1)} /100</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">BIAS gate &gt;70</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,210,100,0.85)]">▲ {hitlQueueItems.length}</span> HITL pending
+                <div className="mt-6 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]"
+                  style={isLightTheme ? { background: 'rgba(185,156,190,0.1)', borderColor: 'rgba(164,131,174,0.18)' } : undefined}>
+                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide"
+                    style={isLightTheme ? { color: '#B99CBE' } : undefined}>
+                    <span className="text-[rgba(14,200,198,0.75)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>◉ {runningAgents.length}</span> agents running
+                    <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                      style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                    <span className="text-[rgba(14,200,198,0.75)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>{testsPassedLabel}</span>
+                    <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                      style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                    <span className="text-[rgba(14,200,198,0.75)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>TEVV {tevvScore.toFixed(1)} /100</span>
+                    <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                      style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                    <span className="text-[rgba(14,200,198,0.75)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>BIAS gate &gt;70</span>
+                    <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                      style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                    <span className="text-[rgba(255,210,100,0.85)]"
+                      style={isLightTheme ? { color: '#9A6FA8' } : undefined}>▲ {hitlQueueItems.length}</span> HITL pending
                   </div>
                 </div>
                   </>
@@ -2688,18 +2708,35 @@ export default function DashboardClient() {
               <div>
                 {/* Section Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase">
+                  <div className={`font-mono text-[9px] tracking-[3px] uppercase ${
+                    isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.34)]'
+                  }`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                     Scheduled Runs
                   </div>
                   <div className="flex gap-2.5">
-                    <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors">
+                    <button
+                      className={[
+                        'rounded-full border px-3 py-1.5 font-mono text-[9px] transition-colors',
+                        isLightTheme
+                          ? 'border-[rgba(185,156,190,0.48)] bg-[rgba(255,255,255,0.78)] text-[#B99CBE] shadow-[0_8px_18px_rgba(142,99,142,0.14)] hover:bg-[rgba(255,255,255,0.9)]'
+                          : 'border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)]',
+                      ].join(' ')}
+                      style={isLightTheme ? { color: '#B99CBE', borderColor: 'rgba(185,156,190,0.48)' } : undefined}
+                    >
                       Next: {nextRunUtcLabel} UTC
                     </button>
                   </div>
                 </div>
 
                 {/* Scheduled Agents Table */}
-                <div className="mb-6 overflow-hidden rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]">
+                <div
+                  className={[
+                    'mb-6 overflow-hidden rounded-lg border',
+                    isLightTheme
+                      ? 'border-[rgba(147,104,149,0.24)] bg-[linear-gradient(165deg,rgba(255,255,255,0.82),rgba(246,236,245,0.9))] shadow-[0_16px_34px_rgba(147,104,149,0.12)]'
+                      : 'border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]',
+                  ].join(' ')}
+                >
                   <table className="w-full table-fixed">
                     <colgroup>
                       <col className="w-[18%]" />
@@ -2710,52 +2747,60 @@ export default function DashboardClient() {
                       <col className="w-[30%]" />
                     </colgroup>
                     <thead>
-                      <tr className="border-b border-[rgba(255,255,255,0.06)]">
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                      <tr className={isLightTheme ? 'border-b border-[rgba(147,104,149,0.14)]' : 'border-b border-[rgba(255,255,255,0.06)]'}>
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Name
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Schedule
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Next Run
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Model
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Est. Duration
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Status
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       {scheduledAgents.map((agent) => (
-                        <tr key={agent.id} className="border-b border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                        <tr
+                          key={agent.id}
+                          className={[
+                            'border-b transition-colors',
+                            isLightTheme
+                              ? 'border-[rgba(147,104,149,0.11)] hover:bg-[rgba(255,255,255,0.46)]'
+                              : 'border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)]',
+                          ].join(' ')}
+                        >
                           <td className="px-5 py-3.5">
-                            <div className="font-[Rajdhani] text-[14px] font-semibold text-[rgba(255,255,255,0.88)]">
+                            <div className={`font-[Rajdhani] text-[14px] font-semibold ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(255,255,255,0.88)]'}`} style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {agent.name}
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            <div className="font-mono text-[11px] text-[rgba(255,255,255,0.52)]">
+                            <div className={`font-mono text-[11px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.52)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                               {agent.schedule}
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            <div className="font-mono text-[11px] text-[rgba(14,200,198,0.85)]">
+                            <div className={`font-mono text-[11px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.85)]'}`} style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {agent.nextRun}
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            <div className="font-mono text-[11px] text-[rgba(14,200,198,0.75)]">
+                            <div className={`font-mono text-[11px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'}`} style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {agent.model}
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            <div className="font-mono text-[11px] text-[rgba(255,255,255,0.48)]">
+                            <div className={`font-mono text-[11px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.48)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                               {agent.estDuration}
                             </div>
                           </td>
@@ -2764,17 +2809,28 @@ export default function DashboardClient() {
                               className={[
                                 'rounded-full border px-3 py-1.5 font-mono text-[9px] font-medium transition-colors',
                                 agent.status === 'hitl'
-                                  ? 'border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.14)] text-[rgba(255,210,100,0.92)] shadow-[0_0_14px_rgba(201,168,76,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(201,168,76,0.2)]'
+                                  ? isLightTheme
+                                    ? 'border-[rgba(196,160,74,0.42)] bg-[rgba(255,246,214,0.9)] text-[#A483AE] shadow-[0_6px_16px_rgba(190,154,66,0.16)] hover:bg-[rgba(255,241,195,0.95)]'
+                                    : 'border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.14)] text-[rgba(255,210,100,0.92)] shadow-[0_0_14px_rgba(201,168,76,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(201,168,76,0.2)]'
                                   : agent.status === 'running'
-                                    ? 'border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.16)] text-[rgba(14,200,198,0.95)] shadow-[0_0_14px_rgba(14,124,123,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(14,124,123,0.22)]'
+                                    ? isLightTheme
+                                      ? 'border-[rgba(185,156,190,0.5)] bg-[rgba(248,233,245,0.92)] text-[#A483AE] shadow-[0_6px_16px_rgba(147,104,149,0.14)] hover:bg-[rgba(244,221,239,0.96)]'
+                                      : 'border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.16)] text-[rgba(14,200,198,0.95)] shadow-[0_0_14px_rgba(14,124,123,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(14,124,123,0.22)]'
                                     : agent.status === 'success'
-                                      ? 'border-[rgba(30,165,80,0.38)] bg-[rgba(30,120,60,0.16)] text-[rgba(120,255,170,0.92)] shadow-[0_0_14px_rgba(30,120,60,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(30,120,60,0.22)]'
+                                      ? isLightTheme
+                                        ? 'border-[rgba(185,156,190,0.46)] bg-[rgba(241,232,245,0.9)] text-[#A483AE] shadow-[0_6px_16px_rgba(135,98,141,0.14)] hover:bg-[rgba(235,224,241,0.96)]'
+                                        : 'border-[rgba(30,165,80,0.38)] bg-[rgba(30,120,60,0.16)] text-[rgba(120,255,170,0.92)] shadow-[0_0_14px_rgba(30,120,60,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(30,120,60,0.22)]'
                                       : agent.status === 'failed'
                                         ? 'border-[rgba(255,90,90,0.35)] bg-[rgba(170,40,40,0.16)] text-[rgba(255,160,160,0.92)] shadow-[0_0_14px_rgba(170,40,40,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(170,40,40,0.22)]'
                                         : agent.status === 'skipped'
-                                          ? 'border-[rgba(160,160,170,0.35)] bg-[rgba(90,90,110,0.18)] text-[rgba(220,220,230,0.88)] shadow-[0_0_14px_rgba(90,90,110,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(90,90,110,0.24)]'
-                                          : 'border-[rgba(100,50,180,0.35)] bg-[rgba(100,50,180,0.14)] text-[rgba(180,140,255,0.92)] shadow-[0_0_14px_rgba(100,50,180,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(100,50,180,0.2)]',
+                                          ? isLightTheme
+                                            ? 'border-[rgba(185,156,190,0.38)] bg-[rgba(244,240,248,0.9)] text-[#B99CBE] shadow-[0_6px_14px_rgba(124,108,140,0.12)] hover:bg-[rgba(238,232,245,0.95)]'
+                                            : 'border-[rgba(160,160,170,0.35)] bg-[rgba(90,90,110,0.18)] text-[rgba(220,220,230,0.88)] shadow-[0_0_14px_rgba(90,90,110,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(90,90,110,0.24)]'
+                                          : isLightTheme
+                                            ? 'border-[rgba(185,156,190,0.48)] bg-[rgba(246,233,244,0.92)] text-[#A483AE] shadow-[0_6px_16px_rgba(147,104,149,0.14)] hover:bg-[rgba(240,222,236,0.95)]'
+                                            : 'border-[rgba(100,50,180,0.35)] bg-[rgba(100,50,180,0.14)] text-[rgba(180,140,255,0.92)] shadow-[0_0_14px_rgba(100,50,180,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(100,50,180,0.2)]',
                               ].join(' ')}
+                              style={isLightTheme ? { color: '#8F6B97' } : undefined}
                             >
                               {agent.status === 'hitl'
                                 ? 'HITL Gate'
@@ -2796,17 +2852,24 @@ export default function DashboardClient() {
                 </div>
 
                 {/* Bottom Stats Bar */}
-                <div className="mt-6 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
-                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
-                    <span className="text-[rgba(14,200,198,0.75)]">◉ {runningAgents.length}</span> agents running
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">{testsPassedLabel}</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">TEVV {tevvScore.toFixed(1)} /100</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">BIAS gate &gt;70</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,210,100,0.85)]">▲ {hitlQueueItems.length}</span> HITL pending
+                <div
+                  className={[
+                    'mt-6 px-4 py-3 rounded-lg border',
+                    isLightTheme
+                      ? 'bg-[rgba(255,255,255,0.65)] border-[rgba(147,104,149,0.2)] shadow-[0_10px_22px_rgba(147,104,149,0.1)]'
+                      : 'bg-[rgba(0,0,0,0.3)] border-[rgba(255,255,255,0.06)]',
+                  ].join(' ')}
+                >
+                  <div className={`font-mono text-[9px] tracking-wide ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
+                    <span className={isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'} style={isLightTheme ? { color: '#8F6B97' } : undefined}>◉ {runningAgents.length}</span> agents running
+                    <span className={`mx-2 ${isLightTheme ? 'text-[rgba(120,90,132,0.3)]' : 'text-[rgba(255,255,255,0.15)]'}`}>|</span>
+                    <span className={isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'} style={isLightTheme ? { color: '#8F6B97' } : undefined}>{testsPassedLabel}</span>
+                    <span className={`mx-2 ${isLightTheme ? 'text-[rgba(120,90,132,0.3)]' : 'text-[rgba(255,255,255,0.15)]'}`}>|</span>
+                    <span className={isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'} style={isLightTheme ? { color: '#8F6B97' } : undefined}>TEVV {tevvScore.toFixed(1)} /100</span>
+                    <span className={`mx-2 ${isLightTheme ? 'text-[rgba(120,90,132,0.3)]' : 'text-[rgba(255,255,255,0.15)]'}`}>|</span>
+                    <span className={isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'} style={isLightTheme ? { color: '#8F6B97' } : undefined}>BIAS gate &gt;70</span>
+                    <span className={`mx-2 ${isLightTheme ? 'text-[rgba(120,90,132,0.3)]' : 'text-[rgba(255,255,255,0.15)]'}`}>|</span>
+                    <span className={isLightTheme ? 'text-[rgba(168,131,43,0.88)]' : 'text-[rgba(255,210,100,0.85)]'}>▲ {hitlQueueItems.length}</span> HITL pending
                   </div>
                 </div>
               </div>
@@ -2816,27 +2879,49 @@ export default function DashboardClient() {
               <div className="space-y-6">
                 <GlassCard variant="teal" className="p-6">
                   <div className="mb-5">
-                    <div className="font-mono text-[11px] tracking-[2.5px] text-[rgba(14,200,198,0.7)] uppercase mb-1">Deep SEO Campaign</div>
-                    <div className="text-[13px] text-[rgba(200,225,245,0.55)]">Run a 5-agent SEO chain: keyword research → content generation → audit → backlinks → knowledge base.</div>
+                    <div
+                      className={`font-mono text-[11px] tracking-[2.5px] uppercase mb-1 ${isLightTheme ? 'text-[#9A6FA8]' : 'text-[rgba(14,200,198,0.7)]'}`}
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}
+                    >
+                      Deep SEO Campaign
+                    </div>
+                    <div
+                      className={`text-[13px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(200,225,245,0.55)]'}`}
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}
+                    >
+                      Run a 5-agent SEO chain: keyword research → content generation → audit → backlinks → knowledge base.
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <label className="block">
-                      <div className="font-mono text-[9px] text-[rgba(255,255,255,0.45)] uppercase mb-1.5 tracking-[2px]">Site URL</div>
+                      <div className={`font-mono text-[9px] uppercase mb-1.5 tracking-[2px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(255,255,255,0.45)]'}`} style={isLightTheme ? { color: '#A483AE' } : undefined}>Site URL</div>
                       <input
                         value={a2aSiteUrl}
                         onChange={event => setA2aSiteUrl(event.target.value)}
                         placeholder="https://example.com"
-                        className="w-full rounded-lg border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]"
+                        className={[
+                          'w-full rounded-lg border px-3 py-2 font-mono text-[12px] focus:outline-none',
+                          isLightTheme
+                            ? 'a2a-campaign-input border-[rgba(185,156,190,0.3)] bg-[rgba(255,255,255,0.7)] text-[#8F6B97] placeholder:text-[#C7B2CD] focus:border-[rgba(164,131,174,0.68)]'
+                            : 'border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.05)] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:border-[rgba(14,200,198,0.55)]',
+                        ].join(' ')}
+                        style={isLightTheme ? { color: '#8F6B97' } : undefined}
                       />
                     </label>
                     <label className="block">
-                      <div className="font-mono text-[9px] text-[rgba(255,255,255,0.45)] uppercase mb-1.5 tracking-[2px]">Target Keywords (comma-separated)</div>
+                      <div className={`font-mono text-[9px] uppercase mb-1.5 tracking-[2px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(255,255,255,0.45)]'}`} style={isLightTheme ? { color: '#A483AE' } : undefined}>Target Keywords (comma-separated)</div>
                       <input
                         value={a2aKeywordsInput}
                         onChange={event => setA2aKeywordsInput(event.target.value)}
                         placeholder="ai marketing automation, seo platform"
-                        className="w-full rounded-lg border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:outline-none focus:border-[rgba(14,200,198,0.55)]"
+                        className={[
+                          'w-full rounded-lg border px-3 py-2 font-mono text-[12px] focus:outline-none',
+                          isLightTheme
+                            ? 'a2a-campaign-input border-[rgba(185,156,190,0.3)] bg-[rgba(255,255,255,0.7)] text-[#8F6B97] placeholder:text-[#C7B2CD] focus:border-[rgba(164,131,174,0.68)]'
+                            : 'border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.05)] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:border-[rgba(14,200,198,0.55)]',
+                        ].join(' ')}
+                        style={isLightTheme ? { color: '#8F6B97' } : undefined}
                       />
                     </label>
                   </div>
@@ -2845,13 +2930,27 @@ export default function DashboardClient() {
                     <button
                       onClick={() => { void handleLaunchDeepSeoCampaign(); }}
                       disabled={a2aLaunchLoading}
-                      className="px-6 py-2.5 rounded-full bg-gradient-to-br from-[rgba(14,124,123,0.72)] to-[rgba(0,60,60,0.8)] border border-[rgba(14,200,198,0.42)] text-[rgba(14,200,198,1)] font-bold text-[12px] tracking-wide shadow-[0_4px_16px_rgba(0,0,0,0.4),0_0_24px_rgba(14,124,123,0.3)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.45),0_0_35px_rgba(14,124,123,0.5)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      className={[
+                        'px-6 py-2.5 rounded-full border font-bold text-[12px] tracking-wide transition-all disabled:opacity-60 disabled:cursor-not-allowed',
+                        isLightTheme
+                          ? 'bg-gradient-to-br from-[rgba(189,137,183,0.88)] to-[rgba(143,107,151,0.92)] border-[rgba(185,156,190,0.65)] text-[rgba(255,245,255,0.98)] shadow-[0_8px_20px_rgba(147,104,149,0.26)] hover:shadow-[0_10px_24px_rgba(147,104,149,0.34)]'
+                          : 'bg-gradient-to-br from-[rgba(14,124,123,0.72)] to-[rgba(0,60,60,0.8)] border-[rgba(14,200,198,0.42)] text-[rgba(14,200,198,1)] shadow-[0_4px_16px_rgba(0,0,0,0.4),0_0_24px_rgba(14,124,123,0.3)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.45),0_0_35px_rgba(14,124,123,0.5)]',
+                      ].join(' ')}
+                      style={
+                        isLightTheme
+                          ? {
+                              color: '#5F3F67',
+                              borderColor: 'rgba(164,131,174,0.62)',
+                              background: 'linear-gradient(135deg, rgba(214,174,208,0.92), rgba(177,136,183,0.92))',
+                            }
+                          : undefined
+                      }
                     >
                       {a2aLaunchLoading ? 'Launching…' : '▶ Launch Campaign'}
                     </button>
                     {a2aSessionId ? (
-                      <div className="font-mono text-[9.5px] text-[rgba(255,255,255,0.42)]">
-                        Session: <span className="text-[rgba(14,200,198,0.88)]">{a2aSessionId}</span>
+                      <div className={`font-mono text-[9.5px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.42)]'}`}>
+                        Session: <span className={isLightTheme ? 'text-[#8F6B97]' : 'text-[rgba(14,200,198,0.88)]'}>{a2aSessionId}</span>
                       </div>
                     ) : null}
                   </div>
@@ -2860,7 +2959,7 @@ export default function DashboardClient() {
                 {/* ── Recent Campaign History ── */}
                 {campaignHistory.length > 0 ? (
                   <GlassCard className="p-5">
-                    <div className="font-mono text-[10px] tracking-[2px] text-[rgba(255,255,255,0.4)] uppercase mb-3">Recent Campaigns</div>
+                    <div className={`font-mono text-[10px] tracking-[2px] uppercase mb-3 ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.4)]'}`}>Recent Campaigns</div>
                     <div className="space-y-2">
                       {campaignHistory.slice(0, 5).map(entry => {
                         const isActive = entry.sessionId === a2aSessionId;
@@ -2870,12 +2969,12 @@ export default function DashboardClient() {
                           : 'rgba(255,210,90,0.9)';
                         return (
                           <div key={entry.sessionId}
-                            className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 ${isActive ? 'border-[rgba(14,200,198,0.35)] bg-[rgba(14,124,123,0.1)]' : 'border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)]'}`}
+                            className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 ${isActive ? (isLightTheme ? 'border-[rgba(185,156,190,0.45)] bg-[rgba(245,232,244,0.8)]' : 'border-[rgba(14,200,198,0.35)] bg-[rgba(14,124,123,0.1)]') : (isLightTheme ? 'border-[rgba(185,156,190,0.25)] bg-[rgba(255,255,255,0.35)]' : 'border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)]')}`}
                           >
                             <div className="flex-1 min-w-0">
-                              <div className="font-mono text-[10.5px] text-[rgba(220,235,255,0.82)] truncate">{entry.siteUrl}</div>
-                              <div className="font-mono text-[9px] text-[rgba(180,200,220,0.45)] truncate mt-0.5">{entry.keywords}</div>
-                              <div className="font-mono text-[8.5px] text-[rgba(180,200,220,0.3)] mt-0.5">
+                              <div className={`font-mono text-[10.5px] truncate ${isLightTheme ? 'text-[#8F6B97]' : 'text-[rgba(220,235,255,0.82)]'}`}>{entry.siteUrl}</div>
+                              <div className={`font-mono text-[9px] truncate mt-0.5 ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>{entry.keywords}</div>
+                              <div className={`font-mono text-[8.5px] mt-0.5 ${isLightTheme ? 'text-[rgba(155,126,166,0.74)]' : 'text-[rgba(180,200,220,0.3)]'}`}>
                                 {new Date(entry.launchedAt).toLocaleString()}
                               </div>
                             </div>
@@ -2884,12 +2983,12 @@ export default function DashboardClient() {
                               {!isActive ? (
                                 <button
                                   onClick={() => { void handleLoadCampaignSession(entry); }}
-                                  className="font-mono text-[8px] uppercase tracking-[1px] px-2 py-1 rounded border border-[rgba(14,200,198,0.3)] text-[rgba(14,200,198,0.75)] hover:bg-[rgba(14,124,123,0.2)] transition-colors"
+                                  className={`font-mono text-[8px] uppercase tracking-[1px] px-2 py-1 rounded border transition-colors ${isLightTheme ? 'border-[rgba(185,156,190,0.45)] text-[#8F6B97] hover:bg-[rgba(244,228,243,0.82)]' : 'border-[rgba(14,200,198,0.3)] text-[rgba(14,200,198,0.75)] hover:bg-[rgba(14,124,123,0.2)]'}`}
                                 >
                                   Load
                                 </button>
                               ) : (
-                                <div className="font-mono text-[8px] uppercase tracking-[1px] text-[rgba(14,200,198,0.5)]">Active</div>
+                                <div className={`font-mono text-[8px] uppercase tracking-[1px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.5)]'}`}>Active</div>
                               )}
                             </div>
                           </div>
@@ -2908,7 +3007,7 @@ export default function DashboardClient() {
                 {a2aSessionStatus ? (
                   <GlassCard className="p-5">
                     <div className="flex items-center justify-between mb-4">
-                      <div className="font-mono text-[10px] tracking-[2px] text-[rgba(255,255,255,0.4)] uppercase">Campaign Progress</div>
+                      <div className={`font-mono text-[10px] tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.4)]'}`}>Campaign Progress</div>
                       <div className="font-mono text-[9px] uppercase tracking-[1.5px] px-2.5 py-1 rounded-full border"
                         style={{
                           color: a2aSessionStatus === 'completed' ? 'rgba(14,200,198,0.95)' : a2aSessionStatus === 'failed' ? 'rgba(255,120,120,0.9)' : 'rgba(255,210,90,0.95)',
@@ -3305,12 +3404,15 @@ export default function DashboardClient() {
                   </GlassCard>
                 </div>
 
-                <GlassCard className="px-5 py-4 border-[rgba(255,255,255,0.1)] bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]">
+                <GlassCard className="px-5 py-4 border-[rgba(255,255,255,0.1)] bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]"
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="font-mono text-[10px] tracking-[3px] uppercase text-[rgba(255,255,255,0.38)]">
+                    <div className="font-mono text-[10px] tracking-[3px] uppercase text-[rgba(255,255,255,0.38)]"
+                      style={isLightTheme ? { color: '#A483AE' } : undefined}>
                       Top Pages
                     </div>
-                    <div className="px-2 py-[3px] rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] font-mono text-[8px] text-[rgba(14,200,198,0.88)]">
+                    <div className="px-2 py-[3px] rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] font-mono text-[8px] text-[rgba(14,200,198,0.88)]"
+                      style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                       GSC Connected
                     </div>
                   </div>
@@ -3318,18 +3420,20 @@ export default function DashboardClient() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[720px] table-fixed border-collapse">
                       <thead>
-                        <tr className="border-b border-[rgba(255,255,255,0.08)]">
-                          <th className="py-2.5 pr-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Page</th>
-                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Visits</th>
-                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Avg Position</th>
-                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">CTR</th>
-                          <th className="py-2.5 pl-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Generated By</th>
+                        <tr className="border-b border-[rgba(255,255,255,0.08)]"
+                          style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
+                          <th className="py-2.5 pr-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Page</th>
+                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Visits</th>
+                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Avg Position</th>
+                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>CTR</th>
+                          <th className="py-2.5 pl-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Generated By</th>
                         </tr>
                       </thead>
                       <tbody>
                         {isAnalyticsTrafficLoading ? (
                           Array.from({ length: 5 }).map((_, index) => (
-                            <tr key={`analytics-top-pages-skeleton-${index}`} className="border-b border-[rgba(255,255,255,0.05)]">
+                            <tr key={`analytics-top-pages-skeleton-${index}`} className="border-b border-[rgba(255,255,255,0.05)]"
+                              style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.12)' } : undefined}>
                               <td className="py-2.5 pr-3"><Skeleton className="h-4 w-64" /></td>
                               <td className="py-2.5 px-3"><Skeleton className="h-4 w-14" /></td>
                               <td className="py-2.5 px-3"><Skeleton className="h-4 w-12" /></td>
@@ -3339,12 +3443,18 @@ export default function DashboardClient() {
                           ))
                         ) : (
                           analyticsTopPages.map((row) => (
-                            <tr key={row.page} className="border-b border-[rgba(255,255,255,0.05)]">
-                              <td className="py-2.5 pr-3 font-[Rajdhani] text-[13px] font-semibold text-[rgba(235,245,255,0.9)]">{row.page}</td>
-                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.visits}</td>
-                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.avgPosition}</td>
-                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.ctr}</td>
-                              <td className="py-2.5 pl-3 font-mono text-[11px] text-[rgba(14,200,198,0.82)]">{row.generatedBy}</td>
+                            <tr key={row.page} className="border-b border-[rgba(255,255,255,0.05)]"
+                              style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.12)' } : undefined}>
+                              <td className="py-2.5 pr-3 font-[Rajdhani] text-[13px] font-semibold text-[rgba(235,245,255,0.9)]"
+                                style={isLightTheme ? { color: '#6B4F72' } : undefined}>{row.page}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]"
+                                style={isLightTheme ? { color: '#8F6B97' } : undefined}>{row.visits}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]"
+                                style={isLightTheme ? { color: '#8F6B97' } : undefined}>{row.avgPosition}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]"
+                                style={isLightTheme ? { color: '#8F6B97' } : undefined}>{row.ctr}</td>
+                              <td className="py-2.5 pl-3 font-mono text-[11px] text-[rgba(14,200,198,0.82)]"
+                                style={isLightTheme ? { color: '#9A6FA8' } : undefined}>{row.generatedBy}</td>
                             </tr>
                           ))
                         )}
@@ -3590,7 +3700,8 @@ export default function DashboardClient() {
               <div>
                 {!isAnalyticsAbTestsLoading && abTests.length === 0 ? (
                   <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]"
+                      style={isLightTheme ? { color: '#A483AE' } : undefined}>
                       No A/B tests are available for this workspace yet.
                     </div>
                   </GlassCard>
@@ -3598,30 +3709,34 @@ export default function DashboardClient() {
 
                 {/* A/B Tests Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[10px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase">
+                  <div className="font-mono text-[10px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     A/B Tests
                   </div>
                   {isAnalyticsAbTestsLoading ? (
                     <Skeleton className="h-7 w-24 rounded-full" />
                   ) : (
-                    <div className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)]">
+                    <div className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)]"
+                      style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                       {abTests.length} Active Tests
                     </div>
                   )}
                 </div>
 
                 {/* A/B Tests Table */}
-                <GlassCard className="px-5 py-4 border-[rgba(255,255,255,0.1)] bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]">
+                <GlassCard className="px-5 py-4 border-[rgba(255,255,255,0.1)] bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]"
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[920px] table-fixed border-collapse">
                       <thead>
-                        <tr className="border-b border-[rgba(255,255,255,0.08)]">
-                          <th className="py-3 pr-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Test</th>
-                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Variant A</th>
-                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Variant B</th>
-                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Winner</th>
-                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Confidence</th>
-                          <th className="py-3 pl-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Status</th>
+                        <tr className="border-b border-[rgba(255,255,255,0.08)]"
+                          style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
+                          <th className="py-3 pr-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Test</th>
+                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Variant A</th>
+                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Variant B</th>
+                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Winner</th>
+                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Confidence</th>
+                          <th className="py-3 pl-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3638,14 +3753,17 @@ export default function DashboardClient() {
                             }))
                           : abTests
                         ).map((test) => (
-                          <tr key={test.id} className="border-b border-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.03)] transition-colors">
+                          <tr key={test.id} className="border-b border-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.03)] transition-colors"
+                            style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.12)' } : undefined}>
                             {/* Test Name */}
-                            <td className="py-3.5 pr-4 font-[Rajdhani] text-[12px] font-semibold text-[rgba(235,245,255,0.9)]">
+                            <td className="py-3.5 pr-4 font-[Rajdhani] text-[12px] font-semibold text-[rgba(235,245,255,0.9)]"
+                              style={isLightTheme ? { color: '#6B4F72' } : undefined}>
                               {isAnalyticsAbTestsLoading ? <Skeleton className="h-4 w-36" /> : test.name}
                             </td>
 
                             {/* Variant A */}
-                            <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed">
+                            <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed"
+                              style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {isAnalyticsAbTestsLoading ? <Skeleton className="h-4 w-40" /> : <div>{test.variantA.label}</div>}
                               {!isAnalyticsAbTestsLoading && test.variantA.lift !== 0 && (
                                 <div className={`text-[9px] mt-0.5 ${test.variantA.lift > 0 ? 'text-[rgba(30,165,80,0.8)]' : 'text-[rgba(255,120,120,0.7)]'}`}>
@@ -3655,7 +3773,8 @@ export default function DashboardClient() {
                             </td>
 
                             {/* Variant B */}
-                            <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed">
+                            <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed"
+                              style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {isAnalyticsAbTestsLoading ? <Skeleton className="h-4 w-40" /> : <div>{test.variantB.label}</div>}
                               {!isAnalyticsAbTestsLoading && test.variantB.lift !== 0 && (
                                 <div className={`text-[9px] mt-0.5 ${test.variantB.lift > 0 ? 'text-[rgba(30,165,80,0.8)]' : 'text-[rgba(255,120,120,0.7)]'}`}>
@@ -3670,10 +3789,13 @@ export default function DashboardClient() {
                                 <Skeleton className="h-4 w-20" />
                               ) : test.winner && test.winner !== 'none' ? (
                                 <div className="font-mono text-[11px] text-[rgba(30,165,80,0.85)]">
-                                  <span className="font-bold">B</span> <span className="text-[rgba(255,255,255,0.55)]">+{test.winnerLift}%</span>
+                                  <span className="font-bold">B</span>{' '}
+                                  <span className="text-[rgba(255,255,255,0.55)]"
+                                    style={isLightTheme ? { color: '#A483AE' } : undefined}>+{test.winnerLift}%</span>
                                 </div>
                               ) : (
-                                <div className="font-mono text-[10px] text-[rgba(255,255,255,0.45)]">
+                                <div className="font-mono text-[10px] text-[rgba(255,255,255,0.45)]"
+                                  style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                                   {test.status === 'too-early' ? 'Too early' : 'In progress'}
                                 </div>
                               )}
@@ -3684,7 +3806,8 @@ export default function DashboardClient() {
                               {isAnalyticsAbTestsLoading ? (
                                 <Skeleton className="h-6 w-16 rounded-full" />
                               ) : (
-                                <div className="inline-flex items-center justify-center rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1 font-mono text-[9px] font-semibold text-[rgba(14,200,198,0.92)]">
+                                <div className="inline-flex items-center justify-center rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1 font-mono text-[9px] font-semibold text-[rgba(14,200,198,0.92)]"
+                                  style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                                   {test.confidence}%
                                 </div>
                               )}
@@ -3704,6 +3827,13 @@ export default function DashboardClient() {
                                       ? 'border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.14)] text-[rgba(14,200,198,0.92)]'
                                       : 'border-[rgba(255,150,100,0.35)] bg-[rgba(255,150,100,0.12)] text-[rgba(255,180,120,0.88)]',
                                   ].join(' ')}
+                                  style={isLightTheme
+                                    ? test.status === 'complete'
+                                      ? { color: '#3a8f5a', borderColor: 'rgba(58,143,90,0.4)', background: 'rgba(58,143,90,0.1)' }
+                                      : test.status === 'running'
+                                      ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' }
+                                      : { color: '#b06030', borderColor: 'rgba(176,96,48,0.4)', background: 'rgba(176,96,48,0.1)' }
+                                    : undefined}
                                 >
                                   {test.status === 'complete' ? 'Complete' : test.status === 'running' ? 'Running' : 'Too Early'}
                                 </span>
@@ -3717,19 +3847,28 @@ export default function DashboardClient() {
                 </GlassCard>
 
                 {/* A/B Tests Summary */}
-                <div className="mt-4 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
-                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
+                <div className="mt-4 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]"
+                  style={isLightTheme ? { background: 'rgba(185,156,190,0.1)', borderColor: 'rgba(164,131,174,0.18)' } : undefined}>
+                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide"
+                    style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                     {isAnalyticsAbTestsLoading ? (
                       <Skeleton className="h-3 w-full" />
                     ) : (
                       <>
-                        <span className="text-[rgba(14,200,198,0.75)]">✓ 1</span> test completed
-                        <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                        <span className="text-[rgba(14,200,198,0.75)]">3</span> currently running
-                        <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                        <span className="text-[rgba(255,180,120,0.75)]">1</span> awaiting more data
-                        <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                        <span className="text-[rgba(255,255,255,0.25)]">Avg sample size: 2.4K per variant</span>
+                        <span className="text-[rgba(14,200,198,0.75)]"
+                          style={isLightTheme ? { color: '#8F6B97' } : undefined}>✓ 1</span> test completed
+                        <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                          style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                        <span className="text-[rgba(14,200,198,0.75)]"
+                          style={isLightTheme ? { color: '#8F6B97' } : undefined}>3</span> currently running
+                        <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                          style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                        <span className="text-[rgba(255,180,120,0.75)]"
+                          style={isLightTheme ? { color: '#b06030' } : undefined}>1</span> awaiting more data
+                        <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                          style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                        <span className="text-[rgba(255,255,255,0.25)]"
+                          style={isLightTheme ? { color: '#A483AE' } : undefined}>Avg sample size: 2.4K per variant</span>
                       </>
                     )}
                   </div>
@@ -3740,18 +3879,21 @@ export default function DashboardClient() {
             {activeTab === 'content' && activeContentLever === 'kb' && (
               <div>
                 {kbDocuments.length === 0 ? (
-                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center">
-                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2">
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center"
+                    style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.25)' } : undefined}>
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                       Knowledge Base Is Empty
                     </div>
-                    <div className="text-[13px] text-[rgba(200,220,245,0.55)] mb-5">
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)] mb-5"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                       Upload your first document to start training content and research agents.
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowKbUpload(true)}
                       className="inline-flex items-center gap-2 rounded-full font-mono text-[11px] tracking-[1px] text-[rgba(14,200,198,0.95)] hover:bg-[rgba(14,200,198,0.12)] transition-colors"
-                      style={{ border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
+                      style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.45)', background: 'transparent', padding: '8px 22px', border: '1px solid' } : { border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
                     >
                       + Upload Document
                     </button>
@@ -3759,10 +3901,12 @@ export default function DashboardClient() {
                 ) : null}
 
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Knowledge Base
                   </div>
-                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]">
+                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]"
+                    style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.6)', background: 'rgba(185,156,190,0.2)', boxShadow: '0 0 14px rgba(143,107,151,0.25), 0 0 28px rgba(143,107,151,0.12), inset 0 1px 0 rgba(143,107,151,0.15)' } : undefined}>
                     {kbDocuments.length} Documents
                   </div>
                 </div>
@@ -3788,15 +3932,17 @@ export default function DashboardClient() {
                       </div>
 
                       {/* Metadata */}
-                      <div className="flex items-center gap-1 font-mono text-[10px] text-[rgba(200,220,245,0.5)] mb-4">
+                      <div className="flex items-center gap-1 font-mono text-[10px] text-[rgba(200,220,245,0.5)] mb-4"
+                        style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                         <span>{doc.words}</span>
-                        <span className="mx-1 text-[rgba(255,255,255,0.3)] select-none">·</span>
+                        <span className="mx-1 text-[rgba(255,255,255,0.3)] select-none" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                         <span>{doc.updated}</span>
                       </div>
 
                       {/* Actions */}
                       <div className="mt-auto flex items-center gap-2">
-                        <button className="rounded-full border border-[rgba(210,228,255,0.32)] bg-[rgba(210,228,255,0.07)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.82)] hover:bg-[rgba(210,228,255,0.14)] hover:text-white hover:border-[rgba(210,228,255,0.5)] transition-all duration-150">
+                        <button className="rounded-full border border-[rgba(210,228,255,0.32)] bg-[rgba(210,228,255,0.07)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.82)] hover:bg-[rgba(210,228,255,0.14)] hover:text-white hover:border-[rgba(210,228,255,0.5)] transition-all duration-150"
+                          style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.35)', background: 'rgba(185,156,190,0.08)' } : undefined}>
                           View
                         </button>
                         <button
@@ -3806,6 +3952,7 @@ export default function DashboardClient() {
                               ? 'border-[rgba(214,174,62,0.55)] bg-[rgba(214,174,62,0.18)] text-[rgba(255,212,96,0.97)] hover:bg-[rgba(214,174,62,0.3)] hover:border-[rgba(214,174,62,0.75)]'
                               : 'border-[rgba(14,200,198,0.5)] bg-[rgba(14,160,156,0.22)] text-[rgba(24,222,220,0.97)] hover:bg-[rgba(14,160,156,0.38)] hover:border-[rgba(14,200,198,0.72)]',
                           ].join(' ')}
+                          style={isLightTheme && doc.actionLabel !== 'Edit' ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.45)', background: 'rgba(185,156,190,0.15)' } : undefined}
                         >
                           {doc.actionLabel}
                         </button>
@@ -3815,9 +3962,12 @@ export default function DashboardClient() {
 
                   <button
                     onClick={() => setShowKbUpload(true)}
-                    className="min-h-[128px] rounded-2xl border border-dashed border-[rgba(14,188,186,0.4)] bg-[rgba(2,18,28,0.72)] hover:bg-[rgba(3,28,40,0.82)] hover:border-[rgba(14,188,186,0.58)] transition-all duration-200 flex flex-col items-center justify-center text-center gap-2">
-                    <span className="text-[26px] leading-none text-[rgba(24,214,220,0.72)] font-light">+</span>
-                    <span className="font-mono text-[10px] tracking-[1.4px] text-[rgba(24,214,220,0.68)]">
+                    className="min-h-[128px] rounded-2xl border border-dashed border-[rgba(14,188,186,0.4)] bg-[rgba(2,18,28,0.72)] hover:bg-[rgba(3,28,40,0.82)] hover:border-[rgba(14,188,186,0.58)] transition-all duration-200 flex flex-col items-center justify-center text-center gap-2"
+                    style={isLightTheme ? { borderColor: 'rgba(143,107,151,0.35)', background: 'rgba(185,156,190,0.08)' } : undefined}>
+                    <span className="text-[26px] leading-none text-[rgba(24,214,220,0.72)] font-light"
+                      style={isLightTheme ? { color: '#9A6FA8' } : undefined}>+</span>
+                    <span className="font-mono text-[10px] tracking-[1.4px] text-[rgba(24,214,220,0.68)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                       Upload New Document
                     </span>
                   </button>
@@ -3887,10 +4037,12 @@ export default function DashboardClient() {
               <div>
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Generated Social Posts
                   </div>
-                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]">
+                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]"
+                    style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.6)', background: 'rgba(185,156,190,0.2)', boxShadow: '0 0 14px rgba(143,107,151,0.25), 0 0 28px rgba(143,107,151,0.12), inset 0 1px 0 rgba(143,107,151,0.15)' } : undefined}>
                     Today: 28 Posts
                   </div>
                 </div>
@@ -3901,31 +4053,34 @@ export default function DashboardClient() {
                     <div
                       key={post.id}
                       className="rounded-2xl border border-[rgba(14,200,198,0.2)] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.07)]"
-                      style={{ background: '#080e18' }}
+                      style={isLightTheme ? { background: 'rgba(248,242,252,0.7)', borderColor: 'rgba(164,131,174,0.25)' } : { background: '#080e18' }}
                     >
                       {/* Card header strip */}
-                      <div className="flex items-center justify-between px-5 py-3 border-b border-[rgba(255,255,255,0.06)]">
+                      <div className="flex items-center justify-between px-5 py-3 border-b border-[rgba(255,255,255,0.06)]"
+                        style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.18)' } : undefined}>
                         <div>
-                          <div className="font-mono text-[10px] tracking-[1.6px] text-[rgba(18,218,214,0.88)] mb-0.5">
+                          <div className="font-mono text-[10px] tracking-[1.6px] text-[rgba(18,218,214,0.88)] mb-0.5"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                             {post.channel}
-                            <span className="mx-1.5 text-[rgba(255,255,255,0.25)]">·</span>
+                            <span className="mx-1.5 text-[rgba(255,255,255,0.25)]" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                             {post.handle}
                           </div>
-                          <div className="font-mono text-[9px] text-[rgba(200,220,245,0.42)] tracking-[0.3px]">
+                          <div className="font-mono text-[9px] text-[rgba(200,220,245,0.42)] tracking-[0.3px]"
+                            style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                             {post.generatedAgo}
                             {post.bias !== null && (
                               <>
-                                <span className="mx-1.5 text-[rgba(255,255,255,0.2)]">·</span>
+                                <span className="mx-1.5 text-[rgba(255,255,255,0.2)]" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                                 BIAS {post.bias}
                               </>
                             )}
                             {post.bias === null && (
                               <>
-                                <span className="mx-1.5 text-[rgba(255,255,255,0.2)]">·</span>
+                                <span className="mx-1.5 text-[rgba(255,255,255,0.2)]" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                                 No BIAS filter
                               </>
                             )}
-                            <span className="mx-1.5 text-[rgba(255,255,255,0.2)]">·</span>
+                            <span className="mx-1.5 text-[rgba(255,255,255,0.2)]" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                             {post.model}
                           </div>
                         </div>
@@ -3941,6 +4096,7 @@ export default function DashboardClient() {
                               disabled={socialActionLoadingId === post.id}
                               aria-busy={socialActionLoadingId === post.id}
                               className="rounded-full border border-[rgba(14,200,198,0.55)] bg-[rgba(14,160,156,0.28)] px-4 py-1.5 text-[11px] font-semibold text-[rgba(24,222,220,0.97)] hover:bg-[rgba(14,160,156,0.44)] hover:border-[rgba(14,200,198,0.78)] transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-55"
+                              style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.5)', background: 'rgba(185,156,190,0.18)' } : undefined}
                             >
                               <span className="inline-flex items-center gap-2">
                                 {socialActionLoadingId === post.id && (
@@ -3956,7 +4112,8 @@ export default function DashboardClient() {
                           <button
                             onClick={() => openSocialEdit(post)}
                             disabled={post.status === 'posted'}
-                            className="rounded-full border border-[rgba(210,228,255,0.28)] bg-[rgba(210,228,255,0.06)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.75)] hover:bg-[rgba(210,228,255,0.13)] hover:text-white hover:border-[rgba(210,228,255,0.46)] transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40">
+                            className="rounded-full border border-[rgba(210,228,255,0.28)] bg-[rgba(210,228,255,0.06)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.75)] hover:bg-[rgba(210,228,255,0.13)] hover:text-white hover:border-[rgba(210,228,255,0.46)] transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40"
+                            style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.35)', background: 'rgba(185,156,190,0.08)' } : undefined}>
                             {post.secondaryAction}
                           </button>
                         </div>
@@ -3965,10 +4122,11 @@ export default function DashboardClient() {
                       {/* Post body */}
                       <div
                         className="px-5 py-4 mx-4 my-3.5 rounded-xl border border-[rgba(255,255,255,0.06)] space-y-3"
-                        style={{ background: '#03060f' }}
+                        style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.18)' } : { background: '#03060f' }}
                       >
                         {post.body.map((line, i) => (
-                          <p key={i} className="font-mono text-[11px] leading-[1.7] text-[rgba(215,232,255,0.82)]">
+                          <p key={i} className="font-mono text-[11px] leading-[1.7] text-[rgba(215,232,255,0.82)]"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                             {line}
                           </p>
                         ))}
@@ -3983,10 +4141,12 @@ export default function DashboardClient() {
               <div>
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Blog Articles
                   </div>
-                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]">
+                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]"
+                    style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.6)', background: 'rgba(185,156,190,0.2)', boxShadow: '0 0 14px rgba(143,107,151,0.25), 0 0 28px rgba(143,107,151,0.12), inset 0 1px 0 rgba(143,107,151,0.15)' } : undefined}>
                     8 Published This Month
                   </div>
                 </div>
@@ -3994,11 +4154,11 @@ export default function DashboardClient() {
                 {/* Table — native <table> so layout never collapses */}
                 <div
                   className="rounded-2xl border border-[rgba(255,255,255,0.08)] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
-                  style={{ background: '#080e18' }}
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', borderColor: 'rgba(164,131,174,0.2)' } : { background: '#080e18' }}
                 >
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                      <tr style={isLightTheme ? { borderBottom: '1px solid rgba(164,131,174,0.2)' } : { borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
                         {[
                           { label: 'TITLE',     width: 'auto' },
                           { label: 'WORDS',     width: '88px' },
@@ -4009,7 +4169,7 @@ export default function DashboardClient() {
                         ].map(({ label, width }) => (
                           <th
                             key={label}
-                            style={{ width, paddingLeft: label === 'TITLE' ? '20px' : undefined, paddingRight: label === 'ACTIONS' ? '20px' : undefined }}
+                            style={{ width, paddingLeft: label === 'TITLE' ? '20px' : undefined, paddingRight: label === 'ACTIONS' ? '20px' : undefined, color: isLightTheme ? '#A483AE' : undefined }}
                             className="py-3 text-left font-mono text-[8.5px] tracking-[1.6px] text-[rgba(255,255,255,0.3)] uppercase font-normal"
                           >
                             {label}
@@ -4021,15 +4181,17 @@ export default function DashboardClient() {
                       {BLOG_ARTICLES.map((article, idx) => (
                         <tr
                           key={article.id}
-                          style={idx < BLOG_ARTICLES.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
+                          style={idx < BLOG_ARTICLES.length - 1 ? { borderBottom: isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.05)' } : undefined}
                         >
                           {/* Title */}
-                          <td className="py-4 pl-5 pr-4 text-[13px] font-medium leading-snug text-[rgba(225,238,255,0.92)]">
+                          <td className="py-4 pl-5 pr-4 text-[13px] font-medium leading-snug text-[rgba(225,238,255,0.92)]"
+                            style={isLightTheme ? { color: '#6B4F72' } : undefined}>
                             {article.title}
                           </td>
 
                           {/* Words */}
-                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]">
+                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                             {article.words}
                           </td>
 
@@ -4037,7 +4199,12 @@ export default function DashboardClient() {
                           <td className="py-4">
                             <span
                               className="inline-flex items-center rounded-full font-mono text-[10px] font-semibold"
-                              style={{
+                              style={isLightTheme ? {
+                                border: '1px solid rgba(143,107,151,0.45)',
+                                background: 'rgba(185,156,190,0.2)',
+                                color: '#8F6B97',
+                                padding: '2px 10px',
+                              } : {
                                 border: '1px solid rgba(14,200,198,0.45)',
                                 background: 'rgba(14,100,98,0.32)',
                                 color: 'rgba(24,222,220,0.95)',
@@ -4049,22 +4216,29 @@ export default function DashboardClient() {
                           </td>
 
                           {/* Published */}
-                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]">
+                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                             {article.published ?? (
-                              <span style={{ color: 'rgba(255,200,100,0.8)' }}>In Progress</span>
+                              <span style={isLightTheme ? { color: '#b06030' } : { color: 'rgba(255,200,100,0.8)' }}>In Progress</span>
                             )}
                           </td>
 
                           {/* Visits */}
-                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]">
-                            {article.visits ?? <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>}
+                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
+                            {article.visits ?? <span style={isLightTheme ? { color: '#D4B8D9' } : { color: 'rgba(255,255,255,0.2)' }}>—</span>}
                           </td>
 
                           {/* Action */}
                           <td className="py-4 pr-5">
                             <button
                               className="rounded-full font-mono text-[11px] font-medium transition-all duration-150"
-                              style={{
+                              style={isLightTheme ? {
+                                border: '1px solid rgba(143,107,151,0.35)',
+                                background: 'rgba(185,156,190,0.08)',
+                                color: '#8F6B97',
+                                padding: '4px 14px',
+                              } : {
                                 border: '1px solid rgba(210,228,255,0.28)',
                                 background: 'rgba(210,228,255,0.06)',
                                 color: 'rgba(220,235,255,0.78)',
@@ -4085,11 +4259,14 @@ export default function DashboardClient() {
             {activeTab === 'contacts' && activeContactsLever === 'all' && (
               <div>
                 {contacts.length === 0 && dashboardLoadState !== 'loading' ? (
-                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center">
-                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2">
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center"
+                    style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.25)' } : undefined}>
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                       No Contacts Synced
                     </div>
-                    <div className="text-[13px] text-[rgba(200,220,245,0.55)] mb-5">
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)] mb-5"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                       {hubspotConnected
                         ? 'HubSpot is connected, but no contacts were returned yet. Trigger a new sync or verify HubSpot contact visibility/scopes.'
                         : 'Connect HubSpot to automatically sync and enrich your contacts.'}
@@ -4099,7 +4276,7 @@ export default function DashboardClient() {
                         type="button"
                         onClick={() => { void refreshDashboardData(true); }}
                         className="inline-flex items-center gap-2 rounded-full font-mono text-[11px] tracking-[1px] text-[rgba(14,200,198,0.95)] hover:bg-[rgba(14,200,198,0.12)] transition-colors"
-                        style={{ border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
+                        style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.45)', background: 'transparent', padding: '8px 22px', border: '1px solid' } : { border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
                       >
                         ↻ Retry Sync
                       </button>
@@ -4107,7 +4284,7 @@ export default function DashboardClient() {
                       <a
                         href="/api/hubspot/auth"
                         className="inline-flex items-center gap-2 rounded-full font-mono text-[11px] tracking-[1px] text-[rgba(14,200,198,0.95)] hover:bg-[rgba(14,200,198,0.12)] transition-colors"
-                        style={{ border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
+                        style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.45)', background: 'transparent', padding: '8px 22px', border: '1px solid' } : { border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
                       >
                         🔵 Connect HubSpot
                       </a>
@@ -4123,13 +4300,19 @@ export default function DashboardClient() {
 
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     All Contacts
                   </div>
                   {/* Plain white-border pill — matches reference exactly (no teal glow) */}
                   <div
                     className="rounded-full font-mono text-[11px] tracking-[0.5px] text-[rgba(230,242,255,0.92)]"
-                    style={{
+                    style={isLightTheme ? {
+                      border: '1px solid rgba(143,107,151,0.4)',
+                      background: 'rgba(185,156,190,0.12)',
+                      padding: '6px 18px',
+                      color: '#8F6B97',
+                    } : {
                       border: '1px solid rgba(220,235,255,0.38)',
                       background: 'rgba(220,235,255,0.06)',
                       padding: '6px 18px',
@@ -4142,11 +4325,11 @@ export default function DashboardClient() {
                 {/* Table */}
                 <div
                   className="rounded-2xl overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
-                  style={{ background: '#080e18', border: '1px solid rgba(255,255,255,0.08)' }}
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', border: '1px solid rgba(164,131,174,0.2)' } : { background: '#080e18', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <tr style={isLightTheme ? { borderBottom: '1px solid rgba(164,131,174,0.2)' } : { borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                         {['NAME', 'COMPANY', 'STAGE', 'LEAD SCORE', 'LAST ENRICHED', 'RISK'].map((col) => (
                           <th
                             key={col}
@@ -4155,6 +4338,7 @@ export default function DashboardClient() {
                               padding: '14px 12px',
                               paddingLeft: col === 'NAME' ? '24px' : '12px',
                               paddingRight: col === 'RISK' ? '24px' : '12px',
+                              color: isLightTheme ? '#A483AE' : undefined,
                             }}
                           >
                             {col}
@@ -4166,12 +4350,12 @@ export default function DashboardClient() {
                       {contacts.map((contact, idx) => (
                         <tr
                           key={contact.id}
-                          style={idx < contacts.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
+                          style={idx < contacts.length - 1 ? { borderBottom: isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.05)' } : undefined}
                         >
                           {/* Name */}
                           <td
                             className="text-[15px] font-bold text-[rgba(235,245,255,0.96)] whitespace-nowrap"
-                            style={{ padding: '18px 12px 18px 24px' }}
+                            style={{ padding: '18px 12px 18px 24px', color: isLightTheme ? '#6B4F72' : undefined }}
                           >
                             {contact.name}
                           </td>
@@ -4179,7 +4363,7 @@ export default function DashboardClient() {
                           {/* Company */}
                           <td
                             className="text-[13px] text-[rgba(190,210,240,0.52)] whitespace-nowrap"
-                            style={{ padding: '18px 12px' }}
+                            style={{ padding: '18px 12px', color: isLightTheme ? '#8F6B97' : undefined }}
                           >
                             {contact.company}
                           </td>
@@ -4198,7 +4382,13 @@ export default function DashboardClient() {
                           <td style={{ padding: '18px 12px' }}>
                             <span
                               className="inline-flex items-center justify-center rounded-full font-mono text-[12px] font-bold"
-                              style={{
+                              style={isLightTheme ? {
+                                width: '40px',
+                                height: '40px',
+                                border: '1px solid rgba(143,107,151,0.45)',
+                                background: 'rgba(185,156,190,0.2)',
+                                color: '#8F6B97',
+                              } : {
                                 width: '40px',
                                 height: '40px',
                                 border: '1px solid rgba(14,200,198,0.5)',
@@ -4213,7 +4403,7 @@ export default function DashboardClient() {
                           {/* Last Enriched */}
                           <td
                             className="text-[13px] text-[rgba(190,210,240,0.52)]"
-                            style={{ padding: '18px 12px' }}
+                            style={{ padding: '18px 12px', color: isLightTheme ? '#8F6B97' : undefined }}
                           >
                             {contact.lastEnriched}
                           </td>
@@ -4228,7 +4418,7 @@ export default function DashboardClient() {
                                 {contact.risk}{contact.risk === 'High' && <span style={{ marginLeft: '4px' }}>⚠</span>}
                               </span>
                             ) : (
-                              <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>
+                              <span style={isLightTheme ? { color: '#D4B8D9' } : { color: 'rgba(255,255,255,0.2)' }}>—</span>
                             )}
                           </td>
                         </tr>
@@ -4239,12 +4429,12 @@ export default function DashboardClient() {
                   {/* Footer */}
                   <div
                     className="text-center font-mono text-[11px] text-[rgba(255,255,255,0.28)]"
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '14px 20px' }}
+                    style={isLightTheme ? { borderTop: '1px solid rgba(164,131,174,0.18)', padding: '14px 20px', color: '#B99CBE' } : { borderTop: '1px solid rgba(255,255,255,0.06)', padding: '14px 20px' }}
                   >
                     Showing {contacts.length} of {contactsSummary.totalSynced} contacts · Enriched by{' '}
-                    <span style={{ color: 'rgba(24,218,214,0.88)' }}>lead_qualifier</span>
+                    <span style={isLightTheme ? { color: '#9A6FA8' } : { color: 'rgba(24,218,214,0.88)' }}>lead_qualifier</span>
                     {' & '}
-                    <span style={{ color: 'rgba(24,218,214,0.88)' }}>churn_predictor</span>
+                    <span style={isLightTheme ? { color: '#9A6FA8' } : { color: 'rgba(24,218,214,0.88)' }}>churn_predictor</span>
                   </div>
                 </div>
               </div>
@@ -4253,11 +4443,14 @@ export default function DashboardClient() {
             {activeTab === 'contacts' && activeContactsLever === 'pipeline' && (
               <div>
                 {pipelineCols.length === 0 ? (
-                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(214,174,62,0.3)] bg-[rgba(90,62,10,0.18)] text-center">
-                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(255,210,90,0.72)] uppercase mb-2">
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(214,174,62,0.3)] bg-[rgba(90,62,10,0.18)] text-center"
+                    style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.25)' } : undefined}>
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(255,210,90,0.72)] uppercase mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                       No Pipeline Data
                     </div>
-                    <div className="text-[13px] text-[rgba(200,220,245,0.55)]">
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)]"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                       Pipeline stages will appear after contacts are synced and classified.
                     </div>
                   </GlassCard>
@@ -4265,12 +4458,19 @@ export default function DashboardClient() {
 
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Sales Pipeline
                   </div>
                   <div
                     className="rounded-full font-mono text-[11px] tracking-[0.5px]"
-                    style={{
+                    style={isLightTheme ? {
+                      border: '1px solid rgba(143,107,151,0.6)',
+                      background: 'rgba(185,156,190,0.2)',
+                      color: '#8F6B97',
+                      padding: '6px 18px',
+                      boxShadow: '0 0 14px rgba(143,107,151,0.25), inset 0 1px 0 rgba(143,107,151,0.15)',
+                    } : {
                       border: '1px solid rgba(214,174,62,0.6)',
                       background: 'rgba(90,62,10,0.55)',
                       color: 'rgba(255,210,90,0.97)',
@@ -4288,18 +4488,22 @@ export default function DashboardClient() {
                     <div
                       key={col.stage}
                       className="rounded-2xl overflow-hidden"
-                      style={{
+                      style={isLightTheme ? {
+                        background: 'rgba(248,242,252,0.6)',
+                        border: `1px solid rgba(164,131,174,0.2)`,
+                        boxShadow: 'none',
+                      } : {
                         background: '#080e18',
                         border: `1px solid ${col.borderColor}`,
                         boxShadow: col.glow,
                       }}
                     >
                       {/* Column header */}
-                      <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div className="font-mono text-[9px] tracking-[2px] uppercase mb-2" style={{ color: col.headerColor }}>
+                      <div style={isLightTheme ? { padding: '14px 16px 10px', borderBottom: '1px solid rgba(164,131,174,0.18)' } : { padding: '14px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        <div className="font-mono text-[9px] tracking-[2px] uppercase mb-2" style={isLightTheme ? { color: '#A483AE' } : { color: col.headerColor }}>
                           {col.stage} · {col.count}
                         </div>
-                        <div className="font-bold text-[22px] leading-none" style={{ color: col.valueColor }}>
+                        <div className="font-bold text-[22px] leading-none" style={isLightTheme ? { color: '#8F6B97' } : { color: col.valueColor }}>
                           {col.value}
                         </div>
                       </div>
@@ -4312,12 +4516,12 @@ export default function DashboardClient() {
                             className="font-mono text-[10px]"
                             style={{
                               padding: '7px 16px',
-                              color: 'rgba(190,215,245,0.65)',
-                              borderBottom: i < col.leads.length - 1 ? '1px solid rgba(255,255,255,0.04)' : undefined,
+                              color: isLightTheme ? '#8F6B97' : 'rgba(190,215,245,0.65)',
+                              borderBottom: i < col.leads.length - 1 ? isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.04)' : undefined,
                             }}
                           >
                             {lead.company}
-                            <span style={{ color: 'rgba(255,255,255,0.28)', margin: '0 5px' }}>·</span>
+                            <span style={isLightTheme ? { color: '#D4B8D9', margin: '0 5px' } : { color: 'rgba(255,255,255,0.28)', margin: '0 5px' }}>·</span>
                             Score {lead.score}
                           </div>
                         ))}
@@ -4328,8 +4532,8 @@ export default function DashboardClient() {
                         className="font-mono text-[9px] text-center"
                         style={{
                           padding: '8px 16px 12px',
-                          color: 'rgba(255,255,255,0.25)',
-                          borderTop: '1px solid rgba(255,255,255,0.04)',
+                          color: isLightTheme ? '#B99CBE' : 'rgba(255,255,255,0.25)',
+                          borderTop: isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.04)',
                         }}
                       >
                         +{col.more} more
@@ -4343,11 +4547,14 @@ export default function DashboardClient() {
             {activeTab === 'contacts' && activeContactsLever === 'segments' && (
               <div>
                 {segments.length === 0 ? (
-                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center">
-                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2">
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center"
+                    style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.25)' } : undefined}>
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                       No Segments Yet
                     </div>
-                    <div className="text-[13px] text-[rgba(200,220,245,0.55)]">
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)]"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                       Segments are created automatically from live contact attributes and agent scoring.
                     </div>
                   </GlassCard>
@@ -4355,12 +4562,19 @@ export default function DashboardClient() {
 
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Segments
                   </div>
                   <div
                     className="rounded-full font-mono text-[11px] tracking-[0.6px]"
-                    style={{
+                    style={isLightTheme ? {
+                      border: '1px solid rgba(143,107,151,0.6)',
+                      background: 'rgba(185,156,190,0.2)',
+                      color: '#8F6B97',
+                      padding: '6px 18px',
+                      boxShadow: '0 0 14px rgba(143,107,151,0.25), 0 0 28px rgba(143,107,151,0.12), inset 0 1px 0 rgba(143,107,151,0.15)',
+                    } : {
                       border: '1px solid rgba(14,210,208,0.72)',
                       background: 'rgba(4,62,72,0.72)',
                       color: 'rgba(24,228,226,0.97)',
@@ -4375,17 +4589,17 @@ export default function DashboardClient() {
                 {/* Table */}
                 <div
                   className="rounded-2xl overflow-hidden"
-                  style={{ background: '#080e18', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', border: '1px solid rgba(164,131,174,0.2)', boxShadow: 'none' } : { background: '#080e18', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}
                 >
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <tr style={isLightTheme ? { borderBottom: '1px solid rgba(164,131,174,0.2)' } : { borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                         {['SEGMENT', 'CONTACTS', 'CRITERIA', 'LAST UPDATED', 'ACTIONS'].map((col) => (
                           <th
                             key={col}
                             className="text-left font-mono text-[8.5px] tracking-[2px] uppercase font-normal"
                             style={{
-                              color: 'rgba(255,255,255,0.28)',
+                              color: isLightTheme ? '#A483AE' : 'rgba(255,255,255,0.28)',
                               padding: '14px 14px',
                               paddingLeft: col === 'SEGMENT' ? '24px' : '14px',
                               paddingRight: col === 'ACTIONS' ? '24px' : '14px',
@@ -4400,25 +4614,25 @@ export default function DashboardClient() {
                       {segments.map((seg, idx) => (
                         <tr
                           key={seg.id}
-                          style={idx < segments.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
+                          style={idx < segments.length - 1 ? { borderBottom: isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.05)' } : undefined}
                         >
                           {/* Segment name */}
-                          <td style={{ padding: '16px 14px 16px 24px', fontSize: '13px', fontWeight: 600, color: 'rgba(230,242,255,0.94)', whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '16px 14px 16px 24px', fontSize: '13px', fontWeight: 600, color: isLightTheme ? '#6B4F72' : 'rgba(230,242,255,0.94)', whiteSpace: 'nowrap' }}>
                             {seg.name}
                           </td>
 
                           {/* Contacts count */}
-                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '13px', fontWeight: 700, color: seg.contactsAlert ? 'rgba(240,80,80,0.95)' : 'rgba(200,220,245,0.75)' }}>
+                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '13px', fontWeight: 700, color: isLightTheme ? '#8F6B97' : seg.contactsAlert ? 'rgba(240,80,80,0.95)' : 'rgba(200,220,245,0.75)' }}>
                             {seg.contacts}
                           </td>
 
                           {/* Criteria */}
-                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '11px', color: 'rgba(190,210,240,0.5)' }}>
+                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '11px', color: isLightTheme ? '#8F6B97' : 'rgba(190,210,240,0.5)' }}>
                             {seg.criteria}
                           </td>
 
                           {/* Last updated */}
-                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '11px', color: 'rgba(190,210,240,0.5)' }}>
+                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '11px', color: isLightTheme ? '#8F6B97' : 'rgba(190,210,240,0.5)' }}>
                             {seg.lastUpdated}
                           </td>
 
@@ -4426,7 +4640,12 @@ export default function DashboardClient() {
                           <td style={{ padding: '16px 24px 16px 14px' }}>
                             <button
                               className="rounded-full font-mono text-[11px] font-semibold transition-all duration-150"
-                              style={seg.actionVariant === 'gold'
+                              style={isLightTheme ? {
+                                border: '1px solid rgba(143,107,151,0.35)',
+                                background: 'rgba(185,156,190,0.08)',
+                                color: '#8F6B97',
+                                padding: '6px 16px',
+                              } : seg.actionVariant === 'gold'
                                 ? { border: '1px solid rgba(214,174,62,0.55)', background: 'rgba(214,174,62,0.18)', color: 'rgba(255,210,90,0.97)', padding: '6px 16px' }
                                 : { border: '1px solid rgba(14,200,198,0.5)', background: 'rgba(14,160,156,0.22)', color: 'rgba(24,222,220,0.97)', padding: '6px 16px' }
                               }
@@ -4713,7 +4932,7 @@ export default function DashboardClient() {
             )}
 
             {activeTab === 'settings' && activeSettingsLever === 'cms' && (
-              <CMSConnections embedded />
+              <CMSConnections embedded isLightTheme={isLightTheme} />
             )}
 
             {/* ── SETTINGS: SECURITY ───────────────────────────────────────── */}

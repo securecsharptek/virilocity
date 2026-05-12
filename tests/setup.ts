@@ -97,7 +97,8 @@ const mockDbChain = {
 };
 // Every method returns the same chain so any sequence of calls resolves correctly
 Object.keys(mockDbChain).forEach(key => {
-  (mockDbChain as Record<string, ReturnType<typeof vi.fn>>)[key].mockReturnValue(mockDbChain);
+  const method = (mockDbChain as Record<string, ReturnType<typeof vi.fn> | undefined>)[key];
+  method?.mockReturnValue(mockDbChain);
 });
 // Terminal methods that should resolve
 mockDbChain.limit.mockResolvedValue([]);

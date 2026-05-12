@@ -34,6 +34,9 @@ export const parseSignedState = (
   if (parts.length !== 5) return { ok: false, error: 'invalid_state_format' };
 
   const [p, tenantId, tsRaw, nonce, sig] = parts;
+  if (!p || !tenantId || !tsRaw || !nonce || !sig) {
+    return { ok: false, error: 'invalid_state_format' };
+  }
   if (p !== purpose) return { ok: false, error: 'invalid_state_purpose' };
 
   const ts = Number(tsRaw);

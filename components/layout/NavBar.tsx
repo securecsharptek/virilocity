@@ -33,7 +33,7 @@ export default function NavBar() {
 
   return (
     // WCAG 1.3.1: <header> landmark
-    <header className="sticky top-0 z-40 bg-navy border-b border-white/10" role="banner">
+    <header className="sticky top-0 z-40 border-b border-white/20 bg-[linear-gradient(115deg,#3a6d96_0%,#4a8db5_44%,#4fa8b0_72%,#3d7a9a_100%)] shadow-[0_6px_18px_rgba(10,30,55,0.18)]" role="banner">
       <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
 
         {/* Logo — WCAG 1.1.1: meaningful alt via aria-label */}
@@ -43,16 +43,16 @@ export default function NavBar() {
           aria-label="Virilocity — Go to homepage"
         >
           <span
-            className="relative flex items-center overflow-hidden rounded-xl border border-white/12 bg-white/5 shadow-[0_0_30px_rgba(14,200,198,0.18)] ring-1 ring-white/8"
-            style={{ width: '320px', height: '68px' }}
+            className="relative flex items-center"
+            style={{ width: '350px', height: '68px' }}
           >
             <Image
               src="/assets/logos/VirilocityLogo.png"
               alt="Virilocity"
               fill
               priority
-              sizes="320px"
-              className="object-cover object-center"
+              sizes="380px"
+              className="object-cover object-[center_54%] scale-[1.12]"
             />
           </span>
         </a>
@@ -64,7 +64,7 @@ export default function NavBar() {
               <li key={href}>
                 <a
                   href={href}
-                  className="text-slate-300 hover:text-white text-sm font-medium transition-colors"
+                  className="text-slate-100 hover:text-white text-sm font-semibold transition-colors"
                 >
                   {label}
                 </a>
@@ -109,7 +109,7 @@ export default function NavBar() {
         <nav
           id="mobile-menu"
           aria-label="Mobile navigation"
-          className="md:hidden bg-navy border-t border-white/10"
+          className="md:hidden border-t border-white/20 bg-[linear-gradient(145deg,#3a6d96_0%,#4a8db5_55%,#4fa8b0_100%)]"
         >
           <ul ref={menuRef} className="list-none p-4 flex flex-col gap-2">
             {NAV_LINKS.map(({ href, label }) => (

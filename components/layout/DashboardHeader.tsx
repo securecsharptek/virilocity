@@ -56,7 +56,7 @@ export default function DashboardHeader({
         <button
           onClick={onToggleTheme}
           type="button"
-          className={`relative inline-flex h-8 w-[72px] items-center rounded-full border px-1 transition-all hover:border-[rgba(14,200,198,0.45)] ${theme === 'dark' ? 'border-[rgba(255,255,255,0.2)] bg-[rgba(255,255,255,0.06)]' : 'border-[rgba(14,124,123,0.26)] bg-[rgba(255,255,255,0.72)]'}`}
+          className={`relative inline-flex h-8 w-[72px] items-center rounded-full border px-1 transition-all ${theme === 'dark' ? 'hover:border-[rgba(14,200,198,0.45)] border-[rgba(255,255,255,0.2)] bg-[rgba(255,255,255,0.06)]' : 'hover:border-[rgba(152,90,141,0.42)] border-[rgba(152,90,141,0.28)] bg-[rgba(255,255,255,0.78)]'}`}
           aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
           title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
         >
@@ -77,8 +77,8 @@ export default function DashboardHeader({
         </div>
 
         {/* Status Badge */}
-        <div className={`px-3 py-1.5 rounded-full font-mono text-[9px] tracking-[1.5px] border flex items-center gap-1.5 ${theme === 'dark' ? 'text-[rgba(30,165,80,0.9)] bg-[rgba(30,165,80,0.1)] border-[rgba(30,165,80,0.3)]' : 'text-[rgba(20,134,68,0.92)] bg-[rgba(20,134,68,0.12)] border-[rgba(20,134,68,0.32)]'}`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-[#1EA550] shadow-[0_0_8px_rgba(30,165,80,0.5)] animate-pulse" />
+        <div className={`px-3 py-1.5 rounded-full font-mono text-[9px] tracking-[1.5px] border flex items-center gap-1.5 ${theme === 'dark' ? 'text-[rgba(30,165,80,0.9)] bg-[rgba(30,165,80,0.1)] border-[rgba(30,165,80,0.3)]' : 'text-[rgba(129,62,114,0.94)] bg-[rgba(186,116,168,0.14)] border-[rgba(152,90,141,0.35)]'}`}>
+          <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${theme === 'dark' ? 'bg-[#1EA550] shadow-[0_0_8px_rgba(30,165,80,0.5)]' : 'bg-[rgba(178,95,154,0.95)] shadow-[0_0_8px_rgba(178,95,154,0.42)]'}`} />
           {status.text} · {status.count}
         </div>
 
