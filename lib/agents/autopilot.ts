@@ -8,9 +8,9 @@ import { uid, now, trunc, withinLimit } from '../utils/index';
 import {
   AGENT_COUNT,
   AGENT_ACTIVATION_PLAN,
+  getTierAgentLimit,
+  isTierEligible,
   REDDIT_REQUIRES_HUMAN_APPROVAL,
-  TIER_LIMITS,
-  TIER_ORDER,
 } from '../types/index';
 import type { Tenant, AgentType, Tier }  from '../types/index';
 
@@ -249,14 +249,13 @@ export const runAutopilot = async (
 ): Promise<AutopilotResult> => {
   const runId    = uid('run');
   const start    = Date.now();
-  const limits   = TIER_LIMITS[tenant.tier];
   const results: AgentExecution[] = [];
 
   // Determine which tasks this tier can run based on both activation plan
   // eligibility and the overall tier agent cap.
-  const enabledCount = limits.agentsEnabled;
+  const enabledCount = getTierAgentLimit(tenant.tier);
   const tierEligibleTasks = AUTOPILOT_TASKS.filter(agent =>
-    TIER_ORDER[tenant.tier] >= TIER_ORDER[AGENT_ACTIVATION_PLAN[agent].minTier],
+    isTierEligible(tenant.tier, AGENT_ACTIVATION_PLAN[agent].minTier),
   );
   const tasks = tierEligibleTasks.filter((_, idx) =>
     withinLimit(idx, enabledCount),

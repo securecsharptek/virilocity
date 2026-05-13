@@ -143,14 +143,32 @@ export const TIER_ORDER: Record<Tier, number> = {
   free: 0, starter: 1, pro: 2, growth: 3, scale: 4, enterprise: 5,
 } as const;
 
+const LOCAL_TIER_BYPASS_VALUES = new Set(['1', 'true', 'yes', 'on']);
+const LOCAL_TIER_BYPASS_DISABLED_VALUES = new Set(['0', 'false', 'no', 'off']);
+
+// Local development helper: temporarily bypass tier gates while building features.
+export const isLocalTierBypassEnabled = (): boolean => {
+  if (process.env['NODE_ENV'] === 'production') return false;
+  const raw = process.env['VIRILOCITY_LOCAL_TIER_BYPASS']?.trim().toLowerCase();
+  if (!raw) return true;
+  if (LOCAL_TIER_BYPASS_DISABLED_VALUES.has(raw)) return false;
+  return LOCAL_TIER_BYPASS_VALUES.has(raw);
+};
+
+export const isTierEligible = (tenantTier: Tier, requiredTier: Tier): boolean =>
+  isLocalTierBypassEnabled() || TIER_ORDER[tenantTier] >= TIER_ORDER[requiredTier];
+
+export const getTierAgentLimit = (tenantTier: Tier): number =>
+  isLocalTierBypassEnabled() ? -1 : TIER_LIMITS[tenantTier].agentsEnabled;
+
 export const AGENT_ACTIVATION_PLAN: Readonly<Record<AgentType, AgentActivation>> = {
   // ── 11 autopilot agents ──────────────────────────────────────────────────
   keyword_researcher:          { mode: 'autopilot',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
-  trend_detector:              { mode: 'autopilot',  minTier: 'starter',    hasFairnessGate: false, hitlGated: false },
-  hs_contact_enricher:         { mode: 'autopilot',  minTier: 'starter',    hasFairnessGate: false, hitlGated: false },
+  trend_detector:              { mode: 'autopilot',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
+  hs_contact_enricher:         { mode: 'autopilot',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
   bid_optimizer:               { mode: 'autopilot',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
   backlink_outreach:           { mode: 'autopilot',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
-  social_listener:             { mode: 'autopilot',  minTier: 'starter',    hasFairnessGate: false, hitlGated: false },
+  social_listener:             { mode: 'autopilot',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
   ai_visibility_tracker:       { mode: 'autopilot',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
   churn_predictor:             { mode: 'autopilot',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
   ab_test_orchestrator:        { mode: 'autopilot',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
@@ -162,7 +180,7 @@ export const AGENT_ACTIVATION_PLAN: Readonly<Record<AgentType, AgentActivation>>
   lead_scorer:                 { mode: 'on_demand',  minTier: 'starter',    hasFairnessGate: false, hitlGated: false },
   revenue_forecaster:          { mode: 'on_demand',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
   viral_analyzer:              { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
-  reddit_manager:              { mode: 'on_demand',  minTier: 'starter',    hasFairnessGate: false, hitlGated: true  },
+  reddit_manager:              { mode: 'on_demand',  minTier: 'free',       hasFairnessGate: false, hitlGated: true  },
   knowledge_base_curator:      { mode: 'on_demand',  minTier: 'starter',    hasFairnessGate: false, hitlGated: false },
   email_sequencer:             { mode: 'on_demand',  minTier: 'starter',    hasFairnessGate: true,  hitlGated: false },
   ad_creative_generator:       { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: true,  hitlGated: false },
