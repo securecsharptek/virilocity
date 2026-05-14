@@ -19,7 +19,7 @@ import {
 } from '../../../lib/types/index';
 import { db, contentPages, payments, agentExecutions, abTests as abTestsTable, hsContacts, kbDocuments as kbDocumentsTable, orgMembers as orgMembersTable, redditThreads, tenants, users } from '../../../lib/db/client';
 import { uid, trunc } from '../../../lib/utils/index';
-import { eq, desc, sum, count, gte, and, isNull } from 'drizzle-orm';
+import { eq, desc, sum, count, gte, lt, and, isNull } from 'drizzle-orm';
 
 // Lightweight in-process backoff so frequent /dashboard/data polls do not spam
 // external HubSpot calls/logs when credentials are missing or invalid.
@@ -142,6 +142,26 @@ type FunnelStage = {
   count: number;
   percentage: number;
   dropoff?: number;
+};
+
+type TrafficKpis = {
+  visitors: string;
+  momLabel: string;
+  pagesPerSession: string;
+  avgDuration: string;
+  bounceRate: string;
+};
+
+type ConversionKpis = {
+  overallConvRate: string;
+  trialToPaid: string;
+  arr: string;
+  arrGrowthLabel: string;
+  churnRate: string;
+  avgLtv: string;
+  cacPayback: string;
+  activeSubscriptions: string;
+  subsMomLabel: string;
 };
 
 type RevenueSegment = {
@@ -296,6 +316,8 @@ type DashboardStore = {
     funnel: FunnelStage[];
     revenueBreakdown: RevenueSegment[];
     abTests: ABTest[];
+    trafficKpis: TrafficKpis;
+    conversionKpis: ConversionKpis;
   };
   contacts: {
     all: Contact[];
@@ -910,31 +932,28 @@ const INITIAL_STORE: DashboardStore = {
     tier: 'free',
   },
   analytics: {
-    channels: [
-      { name: 'Organic Search', visits: '5,840', share: 47, accent: 'teal' },
-      { name: 'Direct', visits: '2,400', share: 20, accent: 'teal' },
-      { name: 'LinkedIn (AI agent)', visits: '1,860', share: 15, accent: 'teal' },
-      { name: 'Email (agent)', visits: '1,240', share: 10, accent: 'teal' },
-      { name: 'Reddit (HITL)', visits: '980', share: 8, accent: 'gold' },
-    ],
-    topPages: [
-      { page: '/blog/ai-marketing-agents-2026', visits: '2,140', avgPosition: '3.2', ctr: '12.8%', generatedBy: 'blog_writer' },
-      { page: '/blog/saas-cac-reduction', visits: '1,820', avgPosition: '5.4', ctr: '9.4%', generatedBy: 'blog_writer' },
-      { page: '/features/autopilot', visits: '1,240', avgPosition: '8.1', ctr: '6.2%', generatedBy: 'Manual' },
-      { page: '/blog/content-fairness-ai', visits: '980', avgPosition: '11.3', ctr: '4.8%', generatedBy: 'blog_writer' },
-      { page: '/pricing', visits: '840', avgPosition: '—', ctr: '—', generatedBy: 'Manual' },
-    ],
-    funnel: [
-      { label: 'Visitors', count: 12400, percentage: 100 },
-      { label: 'Sign-ups', count: 1017, percentage: 8.2, dropoff: 91.8 },
-      { label: 'Trial Users', count: 284, percentage: 2.3, dropoff: 72.0 },
-      { label: 'Paid Customers', count: 88, percentage: 0.7, dropoff: 69.0 },
-    ],
-    revenueBreakdown: [
-      { tier: 'Enterprise', revenue: 4000, percentage: 50, color: 'rgba(255,210,100,0.9)' },
-      { tier: 'Pro', revenue: 2640, percentage: 32, color: 'rgba(14,200,198,0.85)' },
-      { tier: 'Starter', revenue: 300, percentage: 10, color: 'rgba(100,150,180,0.75)' },
-    ],
+    channels: [],
+    topPages: [],
+    funnel: [],
+    revenueBreakdown: [],
+    trafficKpis: {
+      visitors: '—',
+      momLabel: '—',
+      pagesPerSession: '—',
+      avgDuration: '—',
+      bounceRate: '—',
+    },
+    conversionKpis: {
+      overallConvRate: '—',
+      trialToPaid: '—',
+      arr: '—',
+      arrGrowthLabel: '—',
+      churnRate: '—',
+      avgLtv: '—',
+      cacPayback: '—',
+      activeSubscriptions: '—',
+      subsMomLabel: '—',
+    },
     abTests: [
       {
         id: '1',
@@ -1249,8 +1268,116 @@ const computeAnalyticsFromDb = async (tenantId: string, store: DashboardStore): 
         }).onConflictDoNothing()
       ));
     }
+
+    // ── Funnel + ConversionKpis: from users, hsContacts, payments ─────────────
+    const now30 = new Date();
+    const d30ago = new Date(now30.getTime() - 30 * 24 * 3600 * 1000);
+    const d60ago = new Date(now30.getTime() - 60 * 24 * 3600 * 1000);
+    const d365ago = new Date(now30.getTime() - 365 * 24 * 3600 * 1000);
+    const d730ago = new Date(now30.getTime() - 730 * 24 * 3600 * 1000);
+
+    const [contactsTotal] = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(eq(hsContacts.tenantId, tenantId));
+    const [usersTotal] = await db
+      .select({ n: count() })
+      .from(users)
+      .where(eq(users.tenantId, tenantId));
+    const [mqlTotal] = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(and(eq(hsContacts.tenantId, tenantId), eq(hsContacts.lifecycleStage, 'marketingqualifiedlead')));
+    const [paidTotal] = await db
+      .select({ n: count() })
+      .from(payments)
+      .where(and(eq(payments.tenantId, tenantId), eq(payments.status, 'succeeded')));
+
+    const contactsN = Number(contactsTotal?.n ?? 0);
+    const usersN    = Number(usersTotal?.n ?? 0);
+    const mqlN      = Number(mqlTotal?.n ?? 0);
+    const paidN     = Number(paidTotal?.n ?? 0);
+
+    if (contactsN + usersN + mqlN + paidN > 0) {
+      const base = Math.max(contactsN, 1);
+      const dropoff1 = contactsN > 0 ? Math.round((1 - usersN / base) * 1000) / 10 : undefined;
+      const dropoff2 = usersN > 0 ? Math.round((1 - mqlN / Math.max(usersN, 1)) * 1000) / 10 : undefined;
+      const dropoff3 = mqlN > 0 ? Math.round((1 - paidN / Math.max(mqlN, 1)) * 1000) / 10 : undefined;
+      store.analytics.funnel = [
+        { label: 'Contacts',     count: contactsN, percentage: 100 },
+        { label: 'Sign-ups',     count: usersN, percentage: Math.round(usersN / base * 100), dropoff: dropoff1 },
+        { label: 'MQL / Trial',  count: mqlN, percentage: Math.round(mqlN / base * 100), dropoff: dropoff2 },
+        { label: 'Paid',         count: paidN, percentage: Math.round(paidN / base * 100), dropoff: dropoff3 },
+      ];
+      const convRate = contactsN > 0 ? (paidN / contactsN * 100).toFixed(2) + '%' : '—';
+      const t2p = mqlN > 0 ? Math.round(paidN / Math.max(mqlN, 1) * 100) + '%' : '—';
+      store.analytics.conversionKpis.overallConvRate = convRate;
+      store.analytics.conversionKpis.trialToPaid = t2p;
+    }
+
+    // ── TrafficKpis: visitors from hsContacts, MoM from contacts created 30d ──
+    const [contactsLast30] = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(and(eq(hsContacts.tenantId, tenantId), gte(hsContacts.createdAt, d30ago)));
+    const [contactsPrev30] = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(and(eq(hsContacts.tenantId, tenantId), gte(hsContacts.createdAt, d60ago), lt(hsContacts.createdAt, d30ago)));
+    const last30n = Number(contactsLast30?.n ?? 0);
+    const prev30n = Number(contactsPrev30?.n ?? 0);
+    const momPct = prev30n > 0 ? Math.round((last30n - prev30n) / prev30n * 100) : null;
+    store.analytics.trafficKpis = {
+      visitors: contactsN > 0 ? contactsN.toLocaleString() : '—',
+      momLabel: momPct !== null ? (momPct >= 0 ? `+${momPct}%` : `${momPct}%`) + ' MoM' : '—',
+      pagesPerSession: '—',
+      avgDuration: '—',
+      bounceRate: '—',
+    };
+
+    // ── ARR + Churn + Active Subscriptions ────────────────────────────────────
+    const payFullRows = await db
+      .select()
+      .from(payments)
+      .where(and(eq(payments.tenantId, tenantId), eq(payments.status, 'succeeded')));
+    const canceledRows = await db
+      .select({ n: count() })
+      .from(payments)
+      .where(and(eq(payments.tenantId, tenantId), eq(payments.status, 'canceled')));
+    if (payFullRows.length > 0) {
+      const arr = payFullRows.reduce((acc, p) => acc + (p.cycle === 'monthly' ? p.amount * 12 : p.amount), 0) / 100;
+      const arrStr = arr >= 1000000 ? '$' + (arr / 1000000).toFixed(1) + 'M' : arr >= 1000 ? '$' + Math.round(arr / 1000) + 'K' : '$' + Math.round(arr);
+
+      const activeSubs = payFullRows.length;
+      const canceledN = Number(canceledRows[0]?.n ?? 0);
+      const churnPct = activeSubs + canceledN > 0 ? ((canceledN / (activeSubs + canceledN)) * 100).toFixed(1) + '%' : '—';
+      const avgLtvRaw = activeSubs > 0 ? Math.round(arr / activeSubs) : 0;
+      const avgLtvStr = avgLtvRaw >= 1000 ? '$' + (avgLtvRaw / 1000).toFixed(1) + 'K' : '$' + avgLtvRaw;
+
+      // YoY ARR growth
+      const arrLast365 = payFullRows.filter(p => p.createdAt && p.createdAt >= d365ago)
+        .reduce((acc, p) => acc + (p.cycle === 'monthly' ? p.amount * 12 : p.amount), 0) / 100;
+      const arrPrev365 = payFullRows.filter(p => p.createdAt && p.createdAt >= d730ago && p.createdAt < d365ago)
+        .reduce((acc, p) => acc + (p.cycle === 'monthly' ? p.amount * 12 : p.amount), 0) / 100;
+      const yoyPct = arrPrev365 > 0 ? Math.round((arrLast365 - arrPrev365) / arrPrev365 * 100) : null;
+      const arrGrowthLabel = yoyPct !== null ? (yoyPct >= 0 ? `+${yoyPct}%` : `${yoyPct}%`) + ' YoY' : '—';
+
+      // Subs MoM
+      const subsLast30 = payFullRows.filter(p => p.createdAt && p.createdAt >= d30ago).length;
+      const subsPrev30 = payFullRows.filter(p => p.createdAt && p.createdAt >= d60ago && p.createdAt < d30ago).length;
+      const subsMomPct = subsPrev30 > 0 ? Math.round((subsLast30 - subsPrev30) / subsPrev30 * 100) : null;
+      const subsMomLabel = subsMomPct !== null ? (subsMomPct >= 0 ? `Growing ${subsMomPct}%` : `Down ${Math.abs(subsMomPct)}%`) + ' MoM' : 'Tracking MoM';
+
+      store.analytics.conversionKpis.arr = arrStr;
+      store.analytics.conversionKpis.arrGrowthLabel = arrGrowthLabel;
+      store.analytics.conversionKpis.churnRate = churnPct;
+      store.analytics.conversionKpis.avgLtv = avgLtvStr;
+      store.analytics.conversionKpis.activeSubscriptions = activeSubs.toLocaleString();
+      store.analytics.conversionKpis.subsMomLabel = subsMomLabel;
+    }
+
   } catch {
-    // DB unavailable — store.analytics retains static seed values.
+    // DB unavailable — store.analytics retains default values.
   };
   }
 
@@ -1705,7 +1832,7 @@ const computeIntegrationStatus = async (tenant: Tenant): Promise<IntegrationItem
 };
 
 // ── Tenant context assembly from current store state ────────────────────────────
-const assembleTenantContext = (store: DashboardStore, tenant: Tenant): TenantAgentContext => {
+const assembleTenantContext = async (store: DashboardStore, tenant: Tenant): Promise<TenantAgentContext> => {
   // Derive siteUrl from tenant name; fall back to tenant id slug.
   const domainBase = tenant.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'workspace';
   const siteUrl = `https://${domainBase}.com`;
@@ -1736,6 +1863,19 @@ const assembleTenantContext = (store: DashboardStore, tenant: Tenant): TenantAge
     mqls,
     sqls,
     hubspotConnected,
+    // Fetch KB doc content from DB so agents receive brand/product/competitor context.
+    kbDocs: await db.select({
+      name:     kbDocumentsTable.name,
+      category: kbDocumentsTable.category,
+      content:  kbDocumentsTable.content,
+    }).from(kbDocumentsTable)
+      .where(eq(kbDocumentsTable.tenantId, tenant.id))
+      .limit(10)
+      .then(rows => rows.map(r => ({
+        name:     r.name ?? '',
+        category: (r.category ?? 'product-docs') as 'product-docs' | 'brand' | 'competitor-intel',
+        content:  r.content ?? '',
+      }))),
   };
 };
 
@@ -1959,6 +2099,7 @@ export async function POST(req: NextRequest) {
     postId?: string;
     postContent?: string[];
     prompt?: string;
+    docId?: string;
   };
 
   if (body.action === 'runAutopilot') {
@@ -1980,7 +2121,7 @@ export async function POST(req: NextRequest) {
 
     try {
       // Assemble real tenant context so agents receive actual site/keyword/contact data.
-      const tenantCtx = assembleTenantContext(store, tenant);
+      const tenantCtx = await assembleTenantContext(store, tenant);
 
       const result = await runAutopilot(tenant, {
         shouldStop: () => store.autopilot.stopRequested || store.autopilot.paused,
@@ -2285,20 +2426,90 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === 'uploadKbDoc') {
-    const title = body.title?.trim();
+    const title = (body.title as string | undefined)?.trim();
     if (!title) return NextResponse.json({ error: 'title required' }, { status: 400 });
-    const wordCount = body.content ? body.content.trim().split(/\s+/).length : 0;
+    const content = (body.content as string | undefined)?.trim() ?? '';
+    const rawCat = body.category as string | undefined;
+    const category: KnowledgeDoc['category'] =
+      rawCat === 'brand' ? 'brand'
+      : rawCat === 'competitor-intel' ? 'competitor-intel'
+      : 'product-docs';
+    const wordCount = content ? content.split(/\s+/).filter(Boolean).length : 0;
+    const docId = uid('doc');
+
+    // Ensure tenant row exists before FK-constrained insert
+    await db.insert(tenants).values({
+      id: tenant.id, name: tenant.name, tier: tenant.tier, model: tenant.model, status: 'active',
+    }).onConflictDoNothing();
+
+    await db.insert(kbDocumentsTable).values({
+      id: docId,
+      tenantId: tenant.id,
+      name: title.slice(0, 255),
+      content,
+      category,
+      vectorId: `vec_${docId}`,
+    });
+
     const newDoc: KnowledgeDoc = {
-      id: `doc_${Date.now()}`,
-      category: (body.category as KnowledgeDoc['category']) ?? 'product-docs',
+      id: docId,
+      category,
       title,
-      words: `${wordCount.toLocaleString()} words`,
+      words: wordCount > 0 ? `${wordCount.toLocaleString()} words` : '—',
       updated: 'Updated just now',
-      actionLabel: 'Re-train',
+      actionLabel: category === 'brand' ? 'Edit' : 'Re-train',
     };
     store.kbDocuments = [...store.kbDocuments, newDoc];
     await setTenantDashboardState(tenant.id, store);
     return NextResponse.json({ ok: true, data: toResponse(store) });
+  }
+
+  if (body.action === 'viewKbDoc') {
+    const docId = (body.docId as string | undefined)?.trim();
+    if (!docId) return NextResponse.json({ error: 'docId required' }, { status: 400 });
+    const [docRow] = await db.select().from(kbDocumentsTable)
+      .where(and(eq(kbDocumentsTable.id, docId), eq(kbDocumentsTable.tenantId, tenant.id)));
+    if (!docRow) return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    return NextResponse.json({ ok: true, document: { id: docRow.id, name: docRow.name, category: docRow.category, content: docRow.content } });
+  }
+
+  if (body.action === 'retrainKbDoc') {
+    const docId = (body.docId as string | undefined)?.trim();
+    if (!docId) return NextResponse.json({ error: 'docId required' }, { status: 400 });
+    const [docRow] = await db.select().from(kbDocumentsTable)
+      .where(and(eq(kbDocumentsTable.id, docId), eq(kbDocumentsTable.tenantId, tenant.id)));
+    if (!docRow) return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+
+    // Prompt: produce improved plain-text content (not JSON), preserving structure.
+    const systemPrompt = [
+      'You are an expert Knowledge Base editor for a B2B/B2C AI marketing platform.',
+      'Your job is to rewrite and improve the provided document:',
+      '- Fix grammar, clarity, and structure.',
+      '- Add missing context that would help AI marketing agents use this document.',
+      '- Keep the same language and approximate length (±20%).',
+      '- Return ONLY the improved document text. No preamble, no "here is the improved version", no markdown code fences.',
+    ].join('\n');
+    const userPrompt = `Document Title: "${docRow.name}"\nCategory: ${docRow.category}\n\nOriginal Content:\n${trunc(docRow.content, 6000)}`;
+
+    const result = await runAgentCall('knowledge_base_curator', tenant.tier as Tier, systemPrompt, userPrompt);
+
+    // Strip any accidental code fences the model may have added.
+    const improvedContent = result.output
+      .replace(/^\s*```(?:markdown|text|plaintext)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim();
+
+    if (!improvedContent) {
+      return NextResponse.json({ error: 'Agent returned empty content' }, { status: 502 });
+    }
+
+    // Persist improved content back to the DB.
+    await db.update(kbDocumentsTable)
+      .set({ content: improvedContent })
+      .where(and(eq(kbDocumentsTable.id, docId), eq(kbDocumentsTable.tenantId, tenant.id)));
+
+    const wordCount = improvedContent.trim().split(/\s+/).filter(Boolean).length;
+    return NextResponse.json({ ok: true, docId, wordCount, model: result.model });
   }
 
   const stripCodeFence = (value: string): string => value
@@ -2635,14 +2846,36 @@ Return JSON only:
       return NextResponse.json({ error: 'prompt (topic) is required' }, { status: 400 });
     }
 
-    const systemPrompt = `You are a professional SEO content writer. Generate a blog post for the given topic.
-Return ONLY valid JSON in this exact shape — no markdown, no extra text:
-{
-  "title": "<SEO-optimised title>",
-  "slug": "<url-slug>",
-  "body": "<full HTML body — use <h2>, <p>, <ul><li> tags>",
-  "geoScore": <integer 0-100>
-}`;
+    // Fetch KB docs so generated content is brand-aware
+    const tenantKbDocs = await db.select({
+      name:     kbDocumentsTable.name,
+      category: kbDocumentsTable.category,
+      content:  kbDocumentsTable.content,
+    }).from(kbDocumentsTable)
+      .where(eq(kbDocumentsTable.tenantId, tenant.id))
+      .limit(5);
+
+    const kbContext = tenantKbDocs
+      .map(d => `[${d.category}] ${d.name}:\n${trunc(d.content ?? '', 600)}`)
+      .join('\n\n---\n\n');
+
+    const systemPrompt = [
+      'You are a professional SEO content writer for a B2B/B2C AI marketing SaaS platform.',
+      'Generate blog posts that are brand-aware, on-message, and product-informed.',
+      '',
+      kbContext.length > 0
+        ? `Knowledge Base Context:\n${kbContext}\n\nUse this context to inform tone, product mentions, and brand alignment.`
+        : 'No knowledge base provided.',
+      '',
+      'Return ONLY valid JSON in this exact shape — no markdown, no extra text:',
+      '{',
+      '  "title": "<SEO-optimised title>",',
+      '  "slug": "<url-slug>",',
+      '  "body": "<full HTML body — use <h2>, <p>, <ul><li> tags>",',
+      '  "geoScore": <integer 0-100>',
+      '}',
+    ].join('\n');
+
     const userPrompt = `Topic: ${topic}`;
 
     try {

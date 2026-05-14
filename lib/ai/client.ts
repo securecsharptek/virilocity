@@ -6,7 +6,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { MODELS, HAIKU_AGENTS } from '../types/index';
 import { applyFairnessFilter, type FairnessResult } from './fairness';
-import { withRetry, trunc } from '../utils/index';
+import { withRetry } from '../utils/index';
 import type { AgentType, Tier } from '../types/index';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
@@ -45,7 +45,7 @@ export const callClaude = async (opts: ClaudeCallOptions): Promise<string> => {
     model:      opts.model,
     system:     opts.system,
     messages:   opts.messages,
-    max_tokens: opts.maxTokens ?? 800,
+    max_tokens: opts.maxTokens ?? 2048,
   };
 
   if (mcpServers.length > 0) {
@@ -94,7 +94,7 @@ export const runAgentCall = async (
     output   = fairness.sanitized;
   }
 
-  return { output: trunc(output, 2000), model, durationMs: Date.now() - start, fairness };
+  return { output, model, durationMs: Date.now() - start, fairness };
 };
 
 // ── MCP server registry (Claude API tool use) ─────────────────────────────────

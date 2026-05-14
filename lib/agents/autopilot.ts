@@ -56,6 +56,12 @@ export interface TenantAgentContext {
   sqls:             number;
   /** Whether HubSpot is connected (real token present). */
   hubspotConnected: boolean;
+  /**
+   * Relevant KB documents to inject into agent context.
+   * Populated by the autopilot caller — content is truncated before being
+   * passed to the model to stay within context limits.
+   */
+  kbDocs?: Array<{ name: string; category: string; content: string }>;
 }
 
 export interface RunAutopilotOptions {
@@ -191,6 +197,12 @@ const buildAgentInput = (
     const out = priorOutputs[upAgent];
     if (out) chained[upAgent] = trunc(out, 400);
   }
+  // Inject KB documents that agents can use for brand voice, product context, etc.
+  // Each doc is truncated to 800 chars to stay within model context budget.
+  const kbContext = (ctx.kbDocs ?? [])
+    .map(d => `[${d.category}] ${d.name}:\n${trunc(d.content, 800)}`)
+    .join('\n\n---\n\n');
+
   return {
     siteUrl:          ctx.siteUrl,
     targetKeywords:   ctx.targetKeywords,
@@ -198,6 +210,7 @@ const buildAgentInput = (
     mqls:             ctx.mqls,
     sqls:             ctx.sqls,
     hubspotConnected: ctx.hubspotConnected,
+    ...(kbContext.length > 0 ? { knowledgeBase: kbContext } : {}),
     ...(Object.keys(chained).length > 0 ? { priorOutputs: chained } : {}),
   };
 };
@@ -230,7 +243,7 @@ export const runAgent = async (
     return {
       id: execId, tenantId: tenant.id, agentType, model, status: 'success',
       inputSummary:  trunc(JSON.stringify(inputCtx), 120),
-      outputSummary: trunc(output, 2000),
+      outputSummary: trunc(output, 16000),
       durationMs, fairnessScore: fairness?.score ?? undefined,
       createdAt: now(),
     };

@@ -199,6 +199,8 @@ interface DashboardApiResponse {
     funnel: FunnelStage[];
     revenueBreakdown: RevenueSegment[];
     abTests: ABTest[];
+    trafficKpis?: TrafficKpis;
+    conversionKpis?: ConversionKpis;
   };
   contacts?: {
     all: Contact[];
@@ -302,21 +304,9 @@ type AnalyticsTopPage = {
   generatedBy: string;
 };
 
-const ANALYTICS_CHANNELS: AnalyticsChannel[] = [
-  { name: 'Organic Search', visits: '5,840', share: 47, accent: 'teal' as const },
-  { name: 'Direct', visits: '2,400', share: 20, accent: 'teal' as const },
-  { name: 'LinkedIn (AI agent)', visits: '1,860', share: 15, accent: 'teal' as const },
-  { name: 'Email (agent)', visits: '1,240', share: 10, accent: 'teal' as const },
-  { name: 'Reddit (HITL)', visits: '980', share: 8, accent: 'gold' as const },
-];
+const ANALYTICS_CHANNELS: AnalyticsChannel[] = [];
 
-const ANALYTICS_TOP_PAGES: AnalyticsTopPage[] = [
-  { page: '/blog/ai-marketing-agents-2026', visits: '2,140', avgPosition: '3.2', ctr: '12.8%', generatedBy: 'blog_writer' },
-  { page: '/blog/saas-cac-reduction', visits: '1,820', avgPosition: '5.4', ctr: '9.4%', generatedBy: 'blog_writer' },
-  { page: '/features/autopilot', visits: '1,240', avgPosition: '8.1', ctr: '6.2%', generatedBy: 'Manual' },
-  { page: '/blog/content-fairness-ai', visits: '980', avgPosition: '11.3', ctr: '4.8%', generatedBy: 'blog_writer' },
-  { page: '/pricing', visits: '840', avgPosition: '—', ctr: '—', generatedBy: 'Manual' },
-];
+const ANALYTICS_TOP_PAGES: AnalyticsTopPage[] = [];
 
 type FunnelStage = {
   label: string;
@@ -325,12 +315,47 @@ type FunnelStage = {
   dropoff?: number;
 };
 
-const CONVERSION_FUNNEL: FunnelStage[] = [
-  { label: 'Visitors', count: 12400, percentage: 100 },
-  { label: 'Sign-ups', count: 1017, percentage: 8.2, dropoff: 91.8 },
-  { label: 'Trial Users', count: 284, percentage: 2.3, dropoff: 72.0 },
-  { label: 'Paid Customers', count: 88, percentage: 0.7, dropoff: 69.0 },
-];
+type TrafficKpis = {
+  visitors: string;
+  momLabel: string;
+  pagesPerSession: string;
+  avgDuration: string;
+  bounceRate: string;
+};
+
+type ConversionKpis = {
+  overallConvRate: string;
+  trialToPaid: string;
+  arr: string;
+  arrGrowthLabel: string;
+  churnRate: string;
+  avgLtv: string;
+  cacPayback: string;
+  activeSubscriptions: string;
+  subsMomLabel: string;
+};
+
+const DEFAULT_TRAFFIC_KPIS: TrafficKpis = {
+  visitors: '—',
+  momLabel: '—',
+  pagesPerSession: '—',
+  avgDuration: '—',
+  bounceRate: '—',
+};
+
+const DEFAULT_CONVERSION_KPIS: ConversionKpis = {
+  overallConvRate: '—',
+  trialToPaid: '—',
+  arr: '—',
+  arrGrowthLabel: '—',
+  churnRate: '—',
+  avgLtv: '—',
+  cacPayback: '—',
+  activeSubscriptions: '—',
+  subsMomLabel: '—',
+};
+
+const CONVERSION_FUNNEL: FunnelStage[] = [];
 
 type RevenueSegment = {
   tier: string;
@@ -339,11 +364,7 @@ type RevenueSegment = {
   color: string;
 };
 
-const REVENUE_BREAKDOWN: RevenueSegment[] = [
-  { tier: 'Enterprise', revenue: 4000, percentage: 50, color: 'rgba(255,210,100,0.9)' },
-  { tier: 'Pro', revenue: 2640, percentage: 32, color: 'rgba(14,200,198,0.85)' },
-  { tier: 'Starter', revenue: 300, percentage: 10, color: 'rgba(100,150,180,0.75)' },
-];
+const REVENUE_BREAKDOWN: RevenueSegment[] = [];
 
 type ABTest = {
   id: string;
@@ -362,42 +383,7 @@ type ABTest = {
   status: 'complete' | 'running' | 'too-early';
 };
 
-const AB_TESTS: ABTest[] = [
-  {
-    id: '1',
-    name: 'Hero CTA Button',
-    variantA: { label: '"Start Free Trial"', lift: -4.2 },
-    variantB: { label: '"See It In Action"', lift: -5.0 },
-    winner: 'B',
-    winnerLift: 23,
-    confidence: 97.3,
-    status: 'complete',
-  },
-  {
-    id: '2',
-    name: 'Pricing Page Layout',
-    variantA: { label: 'Cards · $91 ARPU', lift: 0 },
-    variantB: { label: 'Table · $98 ARPU', lift: 0 },
-    confidence: 62.4,
-    status: 'running',
-  },
-  {
-    id: '3',
-    name: 'Email Subject Line',
-    variantA: { label: '"Grow faster with AI" · 18%', lift: 0 },
-    variantB: { label: '"Your AI team is ready" · 24%', lift: 0 },
-    confidence: 78.1,
-    status: 'running',
-  },
-  {
-    id: '4',
-    name: 'Onboarding Flow',
-    variantA: { label: '5-step wizard · 38%', lift: 0 },
-    variantB: { label: '3-step + video · 41%', lift: 0 },
-    confidence: 34.2,
-    status: 'too-early',
-  },
-];
+const AB_TESTS: ABTest[] = [];
 
 type KnowledgeDoc = {
   id: string;
@@ -414,48 +400,6 @@ const kbCategoryToneClass: Record<KnowledgeDoc['category'], string> = {
   'competitor-intel': 'text-[rgba(72,196,130,0.85)]',
 };
 
-const KNOWLEDGE_BASE_DOCS: KnowledgeDoc[] = [
-  {
-    id: '1',
-    category: 'product-docs',
-    title: 'Virilocity Platform Overview',
-    words: '4,280 words',
-    updated: 'Updated 2d ago',
-    actionLabel: 'Re-train',
-  },
-  {
-    id: '2',
-    category: 'product-docs',
-    title: '39 Agent Capabilities Guide',
-    words: '8,640 words',
-    updated: 'Updated today',
-    actionLabel: 'Re-train',
-  },
-  {
-    id: '3',
-    category: 'brand',
-    title: 'Brand Voice & Tone Guidelines',
-    words: '2,100 words',
-    updated: 'Updated 5d ago',
-    actionLabel: 'Edit',
-  },
-  {
-    id: '4',
-    category: 'competitor-intel',
-    title: 'Market Landscape Analysis',
-    words: '6,320 words',
-    updated: 'Updated 1w ago',
-    actionLabel: 'Re-train',
-  },
-  {
-    id: '5',
-    category: 'product-docs',
-    title: 'Pricing & Tier Comparison',
-    words: '1,840 words',
-    updated: 'Updated 3d ago',
-    actionLabel: 'Re-train',
-  },
-];
 
 const contentCategoryLabel: Record<KnowledgeDoc['category'], string> = {
   'product-docs': 'Product Docs',
@@ -737,6 +681,8 @@ export default function DashboardClient() {
   const [conversionFunnel, setConversionFunnel] = useState<FunnelStage[]>(CONVERSION_FUNNEL);
   const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueSegment[]>(REVENUE_BREAKDOWN);
   const [abTests, setAbTests] = useState<ABTest[]>(AB_TESTS);
+  const [trafficKpis, setTrafficKpis] = useState<TrafficKpis>(DEFAULT_TRAFFIC_KPIS);
+  const [conversionKpis, setConversionKpis] = useState<ConversionKpis>(DEFAULT_CONVERSION_KPIS);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [pipelineCols, setPipelineCols] = useState<PipelineCol[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -770,6 +716,11 @@ export default function DashboardClient() {
   const [kbUploadContent, setKbUploadContent] = useState('');
   const [showKbUpload, setShowKbUpload] = useState(false);
   const [kbUploadLoading, setKbUploadLoading] = useState(false);
+  const [viewKbDocState, setViewKbDocState] = useState<{ id: string; name: string; category: string; content: string } | null>(null);
+  const [viewKbDocLoading, setViewKbDocLoading] = useState(false);
+  const [retrainLoadingDocId, setRetrainLoadingDocId] = useState<string | null>(null);
+  const [kbFileLoading, setKbFileLoading] = useState(false);
+  const [kbFileName, setKbFileName] = useState<string | null>(null);
   const [editDraftItem, setEditDraftItem] = useState<HITLQueueItem | null>(null);
   const [editDraftContent, setEditDraftContent] = useState('');
   const [editDraftTitle, setEditDraftTitle] = useState('');
@@ -996,6 +947,12 @@ export default function DashboardClient() {
       }
       if (Array.isArray(data.analytics.abTests)) {
         setAbTests(data.analytics.abTests);
+      }
+      if (data.analytics.trafficKpis && typeof data.analytics.trafficKpis === 'object') {
+        setTrafficKpis(data.analytics.trafficKpis as TrafficKpis);
+      }
+      if (data.analytics.conversionKpis && typeof data.analytics.conversionKpis === 'object') {
+        setConversionKpis(data.analytics.conversionKpis as ConversionKpis);
       }
     }
 
@@ -1352,6 +1309,16 @@ export default function DashboardClient() {
     });
   };
 
+  const handleClearCampaignHistory = () => {
+    setCampaignHistory([]);
+    try {
+      localStorage.removeItem('virilocity_campaign_history');
+    } catch {
+      // Ignore storage failures and keep in-memory clear.
+    }
+    toast.success('Campaign history cleared.');
+  };
+
   useEffect(() => {
     if (!a2aSessionId) return;
 
@@ -1637,6 +1604,51 @@ export default function DashboardClient() {
     }
   };
 
+  const handleViewKbDoc = async (docId: string) => {
+    setViewKbDocLoading(true);
+    try {
+      const res = await fetch('/dashboard/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'viewKbDoc', docId }),
+      });
+      if (!res.ok) throw new Error('Failed to load document');
+      const result = (await res.json()) as { ok: boolean; document?: { id: string; name: string; category: string; content: string } };
+      if (result.document) setViewKbDocState(result.document);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to load document';
+      toast.error(msg);
+    } finally {
+      setViewKbDocLoading(false);
+    }
+  };
+
+  const handleRetrainKbDoc = async (docId: string, docTitle: string) => {
+    setRetrainLoadingDocId(docId);
+    try {
+      const res = await fetch('/dashboard/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'retrainKbDoc', docId }),
+      });
+      if (!res.ok) throw new Error('Re-train failed');
+      const json = (await res.json()) as { wordCount?: number };
+      const words = json.wordCount ? ` · ${json.wordCount.toLocaleString()} words` : '';
+      toast.success(`"${docTitle}" improved & saved${words}`);
+      // Refresh KB list to show updated word count
+      const refreshRes = await fetch('/dashboard/data', { method: 'GET' });
+      if (refreshRes.ok) {
+        const refreshed = (await refreshRes.json()) as DashboardApiResponse;
+        if (refreshed.kbDocuments) setKbDocuments(refreshed.kbDocuments);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Re-train failed';
+      toast.error(msg);
+    } finally {
+      setRetrainLoadingDocId(null);
+    }
+  };
+
   return (
     <div className={`min-h-screen dashboard-theme dashboard-theme--${theme}`}>
       {/* Container with max-width */}
@@ -1763,6 +1775,11 @@ export default function DashboardClient() {
                   label="Campaigns"
                   active={activeAgentsLever === 'campaigns'}
                   onClick={() => setActiveAgentsLever('campaigns')}
+                />
+                <Lever
+                  label="Campaign History"
+                  active={activeAgentsLever === 'campaign-history'}
+                  onClick={() => setActiveAgentsLever('campaign-history')}
                 />
               </div>
             </div>
@@ -2895,16 +2912,29 @@ export default function DashboardClient() {
                 <GlassCard variant="teal" className="p-6">
                   <div className="mb-5">
                     <div
-                      className={`font-mono text-[11px] tracking-[2.5px] uppercase mb-1 ${isLightTheme ? 'text-[#9A6FA8]' : 'text-[rgba(14,200,198,0.7)]'}`}
+                      className={`font-mono text-[10px] tracking-[3px] uppercase mb-1 ${isLightTheme ? 'text-[#9A6FA8]' : 'text-[rgba(14,200,198,0.72)]'}`}
                       style={isLightTheme ? { color: '#8F6B97' } : undefined}
                     >
+                      Campaign Studio
+                    </div>
+                    <div className={`text-[20px] leading-tight font-semibold mb-2 ${isLightTheme ? 'text-[#6B4F72]' : 'text-[rgba(232,244,255,0.92)]'}`}>
                       Deep SEO Campaign
                     </div>
                     <div
-                      className={`text-[13px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(200,225,245,0.55)]'}`}
+                      className={`text-[13px] leading-relaxed ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(200,225,245,0.58)]'}`}
                       style={isLightTheme ? { color: '#B99CBE' } : undefined}
                     >
                       Run a 5-agent SEO chain: keyword research → content generation → audit → backlinks → knowledge base.
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {['Keyword Researcher', 'Geo Content Generator', 'SEO Auditor', 'Backlink Outreach', 'KB Curator'].map(agent => (
+                        <span
+                          key={agent}
+                          className={`rounded-full border px-2.5 py-1 font-mono text-[8px] tracking-[1px] uppercase ${isLightTheme ? 'border-[rgba(164,131,174,0.32)] bg-[rgba(255,255,255,0.55)] text-[#8F6B97]' : 'border-[rgba(14,200,198,0.26)] bg-[rgba(14,124,123,0.12)] text-[rgba(170,230,228,0.88)]'}`}
+                        >
+                          {agent}
+                        </span>
+                      ))}
                     </div>
                   </div>
 
@@ -2923,6 +2953,9 @@ export default function DashboardClient() {
                         ].join(' ')}
                         style={isLightTheme ? { color: '#8F6B97' } : undefined}
                       />
+                      <div className={`mt-1 font-mono text-[8px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                        Enter canonical root URL (example: https://example.com)
+                      </div>
                     </label>
                     <label className="block">
                       <div className={`font-mono text-[9px] uppercase mb-1.5 tracking-[2px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(255,255,255,0.45)]'}`} style={isLightTheme ? { color: '#A483AE' } : undefined}>Target Keywords (comma-separated)</div>
@@ -2938,10 +2971,13 @@ export default function DashboardClient() {
                         ].join(' ')}
                         style={isLightTheme ? { color: '#8F6B97' } : undefined}
                       />
+                      <div className={`mt-1 font-mono text-[8px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                        Use 3-10 intent keywords for best clustering and page mapping.
+                      </div>
                     </label>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <button
                       onClick={() => { void handleLaunchDeepSeoCampaign(); }}
                       disabled={a2aLaunchLoading}
@@ -2963,55 +2999,34 @@ export default function DashboardClient() {
                     >
                       {a2aLaunchLoading ? 'Launching…' : '▶ Launch Campaign'}
                     </button>
-                    {a2aSessionId ? (
-                      <div className={`font-mono text-[9.5px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.42)]'}`}>
-                        Session: <span className={isLightTheme ? 'text-[#8F6B97]' : 'text-[rgba(14,200,198,0.88)]'}>{a2aSessionId}</span>
-                      </div>
-                    ) : null}
+                    <div className={`font-mono text-[9px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                      {a2aSessionId ? (
+                        <>Session: <span className={isLightTheme ? 'text-[#8F6B97]' : 'text-[rgba(14,200,198,0.88)]'}>{a2aSessionId}</span></>
+                      ) : (
+                        <>Tip: use Campaign History toggle to load previous sessions.</>
+                      )}
+                    </div>
                   </div>
                 </GlassCard>
 
-                {/* ── Recent Campaign History ── */}
-                {campaignHistory.length > 0 ? (
-                  <GlassCard className="p-5">
-                    <div className={`font-mono text-[10px] tracking-[2px] uppercase mb-3 ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.4)]'}`}>Recent Campaigns</div>
-                    <div className="space-y-2">
-                      {campaignHistory.slice(0, 5).map(entry => {
-                        const isActive = entry.sessionId === a2aSessionId;
-                        const statusColor =
-                          entry.status === 'completed' ? 'rgba(14,200,198,0.9)'
-                          : entry.status === 'failed' ? 'rgba(255,120,120,0.9)'
-                          : 'rgba(255,210,90,0.9)';
-                        return (
-                          <div key={entry.sessionId}
-                            className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 ${isActive ? (isLightTheme ? 'border-[rgba(185,156,190,0.45)] bg-[rgba(245,232,244,0.8)]' : 'border-[rgba(14,200,198,0.35)] bg-[rgba(14,124,123,0.1)]') : (isLightTheme ? 'border-[rgba(185,156,190,0.25)] bg-[rgba(255,255,255,0.35)]' : 'border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)]')}`}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className={`font-mono text-[10.5px] truncate ${isLightTheme ? 'text-[#8F6B97]' : 'text-[rgba(220,235,255,0.82)]'}`}>{entry.siteUrl}</div>
-                              <div className={`font-mono text-[9px] truncate mt-0.5 ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>{entry.keywords}</div>
-                              <div className={`font-mono text-[8.5px] mt-0.5 ${isLightTheme ? 'text-[rgba(155,126,166,0.74)]' : 'text-[rgba(180,200,220,0.3)]'}`}>
-                                {new Date(entry.launchedAt).toLocaleString()}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className="font-mono text-[8.5px] uppercase tracking-[1px]" style={{ color: statusColor }}>{entry.status}</div>
-                              {!isActive ? (
-                                <button
-                                  onClick={() => { void handleLoadCampaignSession(entry); }}
-                                  className={`font-mono text-[8px] uppercase tracking-[1px] px-2 py-1 rounded border transition-colors ${isLightTheme ? 'border-[rgba(185,156,190,0.45)] text-[#8F6B97] hover:bg-[rgba(244,228,243,0.82)]' : 'border-[rgba(14,200,198,0.3)] text-[rgba(14,200,198,0.75)] hover:bg-[rgba(14,124,123,0.2)]'}`}
-                                >
-                                  Load
-                                </button>
-                              ) : (
-                                <div className={`font-mono text-[8px] uppercase tracking-[1px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.5)]'}`}>Active</div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                <GlassCard className="p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className={`font-mono text-[9px] uppercase tracking-[2px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'}`}>
+                        Campaign History
+                      </div>
+                      <div className={`font-mono text-[9px] mt-1 ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                        {campaignHistory.length} session{campaignHistory.length === 1 ? '' : 's'} stored locally.
+                      </div>
                     </div>
-                  </GlassCard>
-                ) : null}
+                    <button
+                      onClick={() => setActiveAgentsLever('campaign-history')}
+                      className={`rounded-full border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[1.2px] transition-all ${isLightTheme ? 'border-[rgba(164,131,174,0.45)] text-[#8F6B97] bg-[rgba(255,255,255,0.55)] hover:bg-[rgba(244,228,243,0.85)]' : 'border-[rgba(14,200,198,0.35)] text-[rgba(14,200,198,0.82)] bg-[rgba(14,124,123,0.14)] hover:bg-[rgba(14,124,123,0.22)]'}`}
+                    >
+                      Open History
+                    </button>
+                  </div>
+                </GlassCard>
 
                 {a2aError ? (
                   <GlassCard className="px-5 py-4 border-[rgba(255,90,90,0.3)] bg-[rgba(100,20,20,0.2)]">
@@ -3054,14 +3069,70 @@ export default function DashboardClient() {
                           const label = AGENT_LABELS[step.agent] ?? step.agent.replace(/_/g, ' ');
                           const icon = AGENT_ICONS[step.agent] ?? '🤖';
 
-                          // Parse output, stripping markdown fences
+                          // Parse output with resilience for fenced, escaped, or double-encoded JSON.
                           let parsed: Record<string, unknown> | null = null;
+                          let readableOutput = '';
                           if (step.outputSummary) {
-                            try {
-                              let raw = step.outputSummary.trim();
-                              raw = raw.replace(/^```(?:json|JSON)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
-                              parsed = JSON.parse(raw) as Record<string, unknown>;
-                            } catch { /* not JSON, ignore */ }
+                            let raw = step.outputSummary.trim();
+                            raw = raw.replace(/^```(?:json|JSON)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
+
+                            const normalizeEscapes = (value: string): string => value
+                              .replace(/\\n/g, '\n')
+                              .replace(/\\t/g, '\t')
+                              .replace(/\\r/g, '')
+                              .replace(/\\"/g, '"')
+                              .trim();
+
+                            const toObject = (value: unknown): Record<string, unknown> | null => (
+                              value && typeof value === 'object' && !Array.isArray(value)
+                                ? (value as Record<string, unknown>)
+                                : null
+                            );
+
+                            const tryParse = (value: string): unknown => {
+                              try {
+                                return JSON.parse(value);
+                              } catch {
+                                return null;
+                              }
+                            };
+
+                            let decoded: unknown = tryParse(raw);
+                            if (typeof decoded === 'string') {
+                              decoded = tryParse(decoded.trim()) ?? decoded;
+                            }
+
+                            parsed = toObject(decoded);
+
+                            if (!parsed) {
+                              const firstObjectBrace = raw.indexOf('{');
+                              const lastObjectBrace = raw.lastIndexOf('}');
+                              if (firstObjectBrace >= 0 && lastObjectBrace > firstObjectBrace) {
+                                const extractedObject = raw.slice(firstObjectBrace, lastObjectBrace + 1);
+                                const parsedObject = tryParse(extractedObject);
+                                parsed = toObject(parsedObject);
+                              }
+                            }
+
+                            if (!parsed) {
+                              const firstArrayBracket = raw.indexOf('[');
+                              const lastArrayBracket = raw.lastIndexOf(']');
+                              if (firstArrayBracket >= 0 && lastArrayBracket > firstArrayBracket) {
+                                const extractedArray = raw.slice(firstArrayBracket, lastArrayBracket + 1);
+                                const parsedArray = tryParse(extractedArray);
+                                if (Array.isArray(parsedArray)) {
+                                  parsed = { items: parsedArray };
+                                }
+                              }
+                            }
+
+                            if (!parsed) {
+                              readableOutput = normalizeEscapes(raw)
+                                .replace(/^"|"$/g, '')
+                                .replace(/\s{2,}/g, ' ')
+                                .replace(/\n{3,}/g, '\n\n')
+                                .trim();
+                            }
                           }
 
                           const statusColor = step.status === 'success' ? 'rgba(14,200,198,0.9)' : step.status === 'failed' ? 'rgba(255,120,120,0.9)' : step.status === 'running' ? 'rgba(255,210,90,0.9)' : 'rgba(180,200,220,0.35)';
@@ -3072,10 +3143,15 @@ export default function DashboardClient() {
                           // ── Agent-specific structured output renderers ───────
                           const renderOutput = () => {
                             if (!parsed) {
-                              if (!step.outputSummary) return null;
+                              if (!readableOutput) return null;
                               return (
                                 <div className="px-4 pb-4">
-                                  <p className="text-[11px] text-[rgba(200,225,245,0.65)] leading-relaxed">{step.outputSummary}</p>
+                                  <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.16)] p-3.5">
+                                    <div className="font-mono text-[7.5px] uppercase tracking-[1.4px] text-[rgba(255,255,255,0.36)] mb-2">Agent Output</div>
+                                    <p className="text-[10px] text-[rgba(200,225,245,0.75)] leading-relaxed whitespace-pre-wrap break-words">
+                                      {readableOutput}
+                                    </p>
+                                  </div>
                                 </div>
                               );
                             }
@@ -3085,27 +3161,31 @@ export default function DashboardClient() {
                               const total = (parsed.totalOpportunities as number) ?? opps.length;
                               const gain = (parsed.estimatedMonthlyTrafficGain as number) ?? null;
                               return (
-                                <div className="px-4 pb-4 space-y-3">
-                                  <div className="flex gap-4">
-                                    <div className="text-center"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Opportunities</div></div>
-                                    {gain ? <div className="text-center"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">+{gain.toLocaleString()}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Est. Monthly Visits</div></div> : null}
+                                <div className="px-4 pb-4 space-y-4">
+                                  <div className="flex gap-6">
+                                    <div className="text-center"><div className="text-[20px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Opportunities</div></div>
+                                    {gain ? <div className="text-center"><div className="text-[20px] font-bold text-[rgba(255,210,90,0.95)]">+{gain.toLocaleString()}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Est. Monthly Visits</div></div> : null}
                                   </div>
-                                  <div className="space-y-2">
-                                    {opps.slice(0, 5).map((o, i) => (
-                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.2)] p-3">
-                                        <div className="flex items-center justify-between mb-1.5">
-                                          <span className="font-mono text-[10.5px] text-[rgba(220,235,255,0.88)] font-semibold">{o.keyword}</span>
-                                          <span className="font-mono text-[8px] uppercase tracking-[1px] px-2 py-0.5 rounded-full" style={{ background: o.priority === 'high' ? 'rgba(14,124,123,0.3)' : 'rgba(80,60,0,0.3)', color: o.priority === 'high' ? 'rgba(14,200,198,0.95)' : 'rgba(255,210,90,0.9)' }}>{o.priority}</span>
+                                  <div className="space-y-3.5">
+                                    {opps.slice(0, 7).map((o, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.15)] p-4 hover:border-[rgba(255,255,255,0.12)] transition-colors">
+                                        <div className="flex items-start justify-between gap-3 mb-2.5">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-[11px] font-semibold text-[rgba(220,235,255,0.92)] mb-2">{o.keyword}</div>
+                                            <div className="flex gap-3 flex-wrap">
+                                              <span className="font-mono text-[8.5px] text-[rgba(180,200,220,0.65)]"><span className="text-[rgba(255,210,90,0.95)]">#{o.currentPosition}</span> position</span>
+                                              <span className="font-mono text-[8.5px] text-[rgba(180,200,220,0.65)]"><span className="text-[rgba(14,200,198,0.85)]">{o.searchVolume?.toLocaleString()}</span> monthly</span>
+                                              <span className="font-mono text-[8.5px] text-[rgba(180,200,220,0.65)]">KD <span className="text-[rgba(200,225,245,0.8)]">{o.difficulty}</span></span>
+                                            </div>
+                                          </div>
+                                          <span className="font-mono text-[7.5px] uppercase tracking-[1.2px] px-2.5 py-1 rounded-full shrink-0" style={{ background: o.priority === 'high' ? 'rgba(14,124,123,0.35)' : 'rgba(80,60,0,0.35)', color: o.priority === 'high' ? 'rgba(14,200,198,0.95)' : 'rgba(255,210,90,0.9)' }}>{o.priority}</span>
                                         </div>
-                                        <div className="flex gap-4 mb-2">
-                                          <span className="font-mono text-[9px] text-[rgba(180,200,220,0.55)]">Pos <span className="text-[rgba(255,210,90,0.9)]">#{o.currentPosition}</span></span>
-                                          <span className="font-mono text-[9px] text-[rgba(180,200,220,0.55)]">Vol <span className="text-[rgba(14,200,198,0.8)]">{o.searchVolume?.toLocaleString()}</span></span>
-                                          <span className="font-mono text-[9px] text-[rgba(180,200,220,0.55)]">KD <span className="text-[rgba(200,225,245,0.7)]">{o.difficulty}</span></span>
+                                        <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.05)]">
+                                          <p className="text-[10px] text-[rgba(180,200,220,0.75)] leading-relaxed whitespace-pre-wrap">{o.contentBrief}</p>
                                         </div>
-                                        <p className="text-[10px] text-[rgba(180,200,220,0.6)] leading-relaxed line-clamp-2">{o.contentBrief}</p>
                                       </div>
                                     ))}
-                                    {opps.length > 5 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center">+{opps.length - 5} more keywords</div> : null}
+                                    {opps.length > 7 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] text-center pt-2 pb-1">+{opps.length - 7} more keywords available</div> : null}
                                   </div>
                                 </div>
                               );
@@ -3115,22 +3195,23 @@ export default function DashboardClient() {
                               const regions = (parsed.regions as Array<{locale:string;city:string;headline:string;metaDescription:string;bodyExcerpt:string;targetKeyword:string}>) ?? [];
                               const total = (parsed.totalPages as number) ?? regions.length;
                               return (
-                                <div className="px-4 pb-4 space-y-3">
+                                <div className="px-4 pb-4 space-y-3.5">
                                   <div className="flex gap-4">
-                                    <div className="text-center"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Geo Pages Generated</div></div>
+                                    <div className="text-center"><div className="text-[20px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Geo Pages</div></div>
                                   </div>
-                                  <div className="space-y-2">
-                                    {regions.slice(0, 4).map((r, i) => (
-                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.2)] p-3">
-                                        <div className="flex items-center gap-2 mb-1.5">
-                                          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[rgba(14,124,123,0.25)] text-[rgba(14,200,198,0.85)]">{r.locale}</span>
-                                          <span className="font-mono text-[10.5px] text-[rgba(220,235,255,0.85)] font-semibold">{r.city}</span>
+                                  <div className="space-y-3">
+                                    {regions.slice(0, 5).map((r, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.15)] p-3.5 hover:border-[rgba(255,255,255,0.12)] transition-colors">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <span className="font-mono text-[8px] px-2 py-0.5 rounded bg-[rgba(14,124,123,0.3)] text-[rgba(14,200,198,0.85)] uppercase">{r.locale}</span>
+                                          <span className="text-[11px] font-semibold text-[rgba(220,235,255,0.9)]">{r.city}</span>
                                         </div>
-                                        <div className="text-[11px] text-[rgba(200,225,245,0.8)] mb-1 font-medium">{r.headline}</div>
-                                        {r.metaDescription ? <p className="text-[9.5px] text-[rgba(160,185,210,0.55)] leading-relaxed line-clamp-2">{r.metaDescription}</p> : null}
-                                        {r.bodyExcerpt ? <p className="text-[9.5px] text-[rgba(180,200,220,0.55)] leading-relaxed line-clamp-2 mt-1 italic">{r.bodyExcerpt}</p> : null}
+                                        <div className="text-[10.5px] text-[rgba(200,225,245,0.85)] mb-2 font-medium leading-relaxed">{r.headline}</div>
+                                        {r.metaDescription ? <p className="text-[9px] text-[rgba(160,185,210,0.65)] leading-relaxed mb-1.5">{r.metaDescription}</p> : null}
+                                        {r.bodyExcerpt ? <p className="text-[9px] text-[rgba(180,200,220,0.6)] leading-relaxed italic bg-[rgba(255,255,255,0.02)] p-2 rounded">{r.bodyExcerpt}</p> : null}
                                       </div>
                                     ))}
+                                    {regions.length > 5 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center pt-1">+{regions.length - 5} more pages</div> : null}
                                   </div>
                                 </div>
                               );
@@ -3143,30 +3224,30 @@ export default function DashboardClient() {
                               const da = (parsed.domainAuthority as number) ?? null;
                               const scoreColor = score !== null ? (score >= 80 ? 'rgba(14,200,198,0.95)' : score >= 60 ? 'rgba(255,210,90,0.95)' : 'rgba(255,120,120,0.9)') : 'rgba(180,200,220,0.5)';
                               return (
-                                <div className="px-4 pb-4 space-y-3">
+                                <div className="px-4 pb-4 space-y-3.5">
                                   <div className="flex gap-6 items-end">
-                                    {score !== null ? <div><div className="text-[26px] font-bold leading-none" style={{ color: scoreColor }}>{score}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-0.5">SEO Score</div></div> : null}
-                                    {da !== null ? <div><div className="text-[18px] font-bold text-[rgba(200,180,255,0.9)]">{da}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Domain Authority</div></div> : null}
+                                    {score !== null ? <div><div className="text-[28px] font-bold leading-none" style={{ color: scoreColor }}>{score}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">SEO Score</div></div> : null}
+                                    {da !== null ? <div><div className="text-[20px] font-bold text-[rgba(200,180,255,0.9)]">{da}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Domain Authority</div></div> : null}
                                     {cwv ? <div className="flex gap-3">
-                                      {cwv.lcp_s !== undefined ? <div className="text-center"><div className="font-mono text-[11px] font-bold" style={{ color: cwv.lcp_s <= 2.5 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.lcp_s}s</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.3)] uppercase">LCP</div></div> : null}
-                                      {cwv.cls !== undefined ? <div className="text-center"><div className="font-mono text-[11px] font-bold" style={{ color: cwv.cls <= 0.1 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.cls}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.3)] uppercase">CLS</div></div> : null}
-                                      {cwv.fid_ms !== undefined ? <div className="text-center"><div className="font-mono text-[11px] font-bold" style={{ color: cwv.fid_ms <= 100 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.fid_ms}ms</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.3)] uppercase">FID</div></div> : null}
+                                      {cwv.lcp_s !== undefined ? <div className="text-center"><div className="font-mono text-[12px] font-bold" style={{ color: cwv.lcp_s <= 2.5 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.lcp_s}s</div><div className="font-mono text-[7px] text-[rgba(255,255,255,0.35)] uppercase">LCP</div></div> : null}
+                                      {cwv.cls !== undefined ? <div className="text-center"><div className="font-mono text-[12px] font-bold" style={{ color: cwv.cls <= 0.1 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.cls}</div><div className="font-mono text-[7px] text-[rgba(255,255,255,0.35)] uppercase">CLS</div></div> : null}
+                                      {cwv.fid_ms !== undefined ? <div className="text-center"><div className="font-mono text-[12px] font-bold" style={{ color: cwv.fid_ms <= 100 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.fid_ms}ms</div><div className="font-mono text-[7px] text-[rgba(255,255,255,0.35)] uppercase">FID</div></div> : null}
                                     </div> : null}
                                   </div>
                                   {issues.length > 0 ? (
-                                    <div className="space-y-1.5">
-                                      <div className="font-mono text-[8px] tracking-[2px] text-[rgba(255,255,255,0.3)] uppercase">Issues Found ({issues.length})</div>
-                                      {issues.slice(0, 5).map((iss, i) => (
-                                        <div key={i} className="flex gap-2.5 rounded-md border border-[rgba(255,255,255,0.05)] bg-[rgba(0,0,0,0.2)] px-3 py-2">
-                                          <span className="font-mono text-[8px] px-1.5 py-0.5 rounded shrink-0 mt-0.5" style={{ background: iss.severity === 'high' ? 'rgba(120,30,30,0.4)' : iss.severity === 'medium' ? 'rgba(80,55,0,0.4)' : 'rgba(30,50,80,0.4)', color: iss.severity === 'high' ? 'rgba(255,120,120,0.9)' : iss.severity === 'medium' ? 'rgba(255,210,90,0.9)' : 'rgba(100,180,255,0.8)' }}>{iss.severity}</span>
-                                          <div className="min-w-0">
-                                            <div className="font-mono text-[9px] text-[rgba(200,225,245,0.75)]">{iss.type?.replace(/_/g, ' ')}</div>
-                                            <div className="text-[9px] text-[rgba(160,185,210,0.55)] truncate">{iss.page}</div>
-                                            {iss.recommendation ? <div className="text-[9px] text-[rgba(180,200,220,0.6)] mt-0.5 line-clamp-1">{iss.recommendation}</div> : null}
+                                    <div className="space-y-2">
+                                      <div className="font-mono text-[8px] tracking-[2px] text-[rgba(255,255,255,0.4)] uppercase">Issues Found ({issues.length})</div>
+                                      {issues.slice(0, 6).map((iss, i) => (
+                                        <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.15)] p-3">
+                                          <div className="flex gap-2 mb-1.5">
+                                            <span className="font-mono text-[8px] px-2 py-0.5 rounded shrink-0 uppercase font-semibold" style={{ background: iss.severity === 'high' ? 'rgba(120,30,30,0.4)' : iss.severity === 'medium' ? 'rgba(80,55,0,0.4)' : 'rgba(30,50,80,0.4)', color: iss.severity === 'high' ? 'rgba(255,120,120,0.9)' : iss.severity === 'medium' ? 'rgba(255,210,90,0.9)' : 'rgba(100,180,255,0.8)' }}>{iss.severity}</span>
+                                            <span className="font-mono text-[9px] text-[rgba(200,225,245,0.8)]">{iss.type?.replace(/_/g, ' ')}</span>
                                           </div>
+                                          <div className="text-[9px] text-[rgba(160,185,210,0.65)] mb-1">{iss.page}</div>
+                                          {iss.recommendation ? <div className="text-[9px] text-[rgba(180,200,220,0.7)] mt-1 leading-relaxed bg-[rgba(255,255,255,0.01)] p-1.5 rounded">{iss.recommendation}</div> : null}
                                         </div>
                                       ))}
-                                      {issues.length > 5 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center">+{issues.length - 5} more issues</div> : null}
+                                      {issues.length > 6 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center pt-1">+{issues.length - 6} more issues</div> : null}
                                     </div>
                                   ) : null}
                                 </div>
@@ -3178,22 +3259,23 @@ export default function DashboardClient() {
                               const drafted = (parsed.drafted as number) ?? targets.length;
                               const responseRate = (parsed.estimatedResponseRate as number) ?? null;
                               return (
-                                <div className="px-4 pb-4 space-y-3">
+                                <div className="px-4 pb-4 space-y-3.5">
                                   <div className="flex gap-5">
-                                    <div className="text-center"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">{drafted}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Outreach Drafted</div></div>
-                                    {responseRate ? <div className="text-center"><div className="text-[18px] font-bold text-[rgba(255,210,90,0.9)]">{Math.round(responseRate * 100)}%</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Est. Response Rate</div></div> : null}
+                                    <div className="text-center"><div className="text-[20px] font-bold text-[rgba(14,200,198,0.95)]">{drafted}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Outreach Drafted</div></div>
+                                    {responseRate ? <div className="text-center"><div className="text-[20px] font-bold text-[rgba(255,210,90,0.9)]">{Math.round(responseRate * 100)}%</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Est. Response</div></div> : null}
                                   </div>
-                                  <div className="space-y-2">
-                                    {targets.slice(0, 4).map((t, i) => (
-                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.2)] p-3">
-                                        <div className="flex items-center justify-between mb-1.5">
-                                          <span className="font-mono text-[10.5px] text-[rgba(14,200,198,0.88)]">{t.domain}</span>
-                                          <span className="font-mono text-[9px] text-[rgba(200,180,255,0.75)]">DA {t.domainAuthority}</span>
+                                  <div className="space-y-3">
+                                    {targets.slice(0, 5).map((t, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.15)] p-3.5 hover:border-[rgba(255,255,255,0.12)] transition-colors">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-[11px] font-semibold text-[rgba(14,200,198,0.92)]">{t.domain}</span>
+                                          <span className="font-mono text-[8.5px] text-[rgba(200,180,255,0.8)]">DA {t.domainAuthority}</span>
                                         </div>
-                                        {t.emailSubject ? <div className="text-[10px] text-[rgba(220,235,255,0.75)] font-medium mb-1">"{t.emailSubject}"</div> : null}
-                                        {t.emailBody ? <p className="text-[9.5px] text-[rgba(160,185,210,0.55)] leading-relaxed line-clamp-2">{t.emailBody}</p> : null}
+                                        {t.emailSubject ? <div className="text-[10px] text-[rgba(220,235,255,0.82)] font-medium mb-2 leading-relaxed">"{t.emailSubject}"</div> : null}
+                                        {t.emailBody ? <p className="text-[9.5px] text-[rgba(160,185,210,0.7)] leading-relaxed whitespace-pre-wrap bg-[rgba(255,255,255,0.01)] p-2.5 rounded">{t.emailBody}</p> : null}
                                       </div>
                                     ))}
+                                    {targets.length > 5 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center pt-1">+{targets.length - 5} more targets</div> : null}
                                   </div>
                                 </div>
                               );
@@ -3203,25 +3285,27 @@ export default function DashboardClient() {
                               const entries = (parsed.entries as Array<{title:string;category:string;summary:string;tags:string[]}>) ?? [];
                               const total = (parsed.totalCreated as number) ?? entries.length;
                               return (
-                                <div className="px-4 pb-4 space-y-3">
-                                  <div className="text-center w-fit"><div className="text-[18px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">KB Entries Created</div></div>
-                                  <div className="space-y-2">
-                                    {entries.slice(0, 5).map((e, i) => (
-                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.2)] p-3">
-                                        <div className="flex items-center gap-2 mb-1.5">
-                                          <span className="font-mono text-[8px] px-1.5 py-0.5 rounded bg-[rgba(80,40,120,0.35)] text-[rgba(180,140,255,0.85)]">{e.category?.replace(/_/g, ' ')}</span>
-                                          <span className="text-[10.5px] text-[rgba(220,235,255,0.85)] font-medium">{e.title}</span>
+                                <div className="px-4 pb-4 space-y-3.5">
+                                  <div className="text-center"><div className="text-[20px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">KB Entries</div></div>
+                                  <div className="space-y-3">
+                                    {entries.slice(0, 6).map((e, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.15)] p-3.5 hover:border-[rgba(255,255,255,0.12)] transition-colors">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <span className="font-mono text-[8px] px-2 py-0.5 rounded bg-[rgba(80,40,120,0.3)] text-[rgba(180,140,255,0.85)] uppercase">{e.category?.replace(/_/g, ' ')}</span>
+                                          <span className="text-[11px] text-[rgba(220,235,255,0.88)] font-semibold">{e.title}</span>
                                         </div>
-                                        <p className="text-[9.5px] text-[rgba(180,200,220,0.6)] leading-relaxed line-clamp-2">{e.summary}</p>
+                                        <p className="text-[9.5px] text-[rgba(180,200,220,0.7)] leading-relaxed mb-2">{e.summary}</p>
                                         {e.tags?.length ? (
-                                          <div className="flex flex-wrap gap-1 mt-1.5">
-                                            {e.tags.slice(0, 4).map((tag, ti) => (
-                                              <span key={ti} className="font-mono text-[7.5px] px-1.5 py-0.5 rounded bg-[rgba(14,124,123,0.18)] text-[rgba(14,200,198,0.65)]">#{tag}</span>
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {e.tags.slice(0, 5).map((tag, ti) => (
+                                              <span key={ti} className="font-mono text-[7.5px] px-2 py-0.5 rounded bg-[rgba(14,124,123,0.25)] text-[rgba(14,200,198,0.75)]">#{tag}</span>
                                             ))}
+                                            {e.tags.length > 5 ? <span className="font-mono text-[7px] text-[rgba(255,255,255,0.4)]">+{e.tags.length - 5}</span> : null}
                                           </div>
                                         ) : null}
                                       </div>
                                     ))}
+                                    {entries.length > 6 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center pt-1">+{entries.length - 6} more entries</div> : null}
                                   </div>
                                 </div>
                               );
@@ -3229,16 +3313,29 @@ export default function DashboardClient() {
 
                             // Generic fallback — key/value grid for unknown agents
                             const topLevelEntries = Object.entries(parsed).filter(([, v]) => typeof v !== 'object' || v === null).slice(0, 8);
-                            return topLevelEntries.length > 0 ? (
-                              <div className="px-4 pb-4 grid grid-cols-2 gap-2">
-                                {topLevelEntries.map(([k, v]) => (
-                                  <div key={k} className="rounded-md bg-[rgba(0,0,0,0.2)] px-3 py-2">
-                                    <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1px] mb-0.5">{k.replace(/_/g, ' ')}</div>
-                                    <div className="font-mono text-[11px] text-[rgba(200,225,245,0.82)]">{String(v)}</div>
-                                  </div>
-                                ))}
+                            if (topLevelEntries.length > 0) {
+                              return (
+                                <div className="px-4 pb-4 grid grid-cols-2 gap-2">
+                                  {topLevelEntries.map(([k, v]) => (
+                                    <div key={k} className="rounded-md bg-[rgba(0,0,0,0.2)] px-3 py-2">
+                                      <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1px] mb-0.5">{k.replace(/_/g, ' ')}</div>
+                                      <div className="font-mono text-[11px] text-[rgba(200,225,245,0.82)]">{String(v)}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="px-4 pb-4">
+                                <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.16)] p-3.5">
+                                  <div className="font-mono text-[7.5px] uppercase tracking-[1.4px] text-[rgba(255,255,255,0.36)] mb-2">Structured Output</div>
+                                  <pre className="text-[9.5px] text-[rgba(200,225,245,0.72)] leading-relaxed whitespace-pre-wrap break-words font-mono">
+                                    {JSON.stringify(parsed, null, 2)}
+                                  </pre>
+                                </div>
                               </div>
-                            ) : null;
+                            );
                           };
 
                           return (
@@ -3296,6 +3393,97 @@ export default function DashboardClient() {
               </div>
             )}
 
+            {activeTab === 'agents' && activeAgentsLever === 'campaign-history' && (
+              <div className="space-y-5">
+                <GlassCard className="p-5">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <div className={`font-mono text-[10px] tracking-[2.4px] uppercase ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.78)]'}`}>
+                        Campaign History
+                      </div>
+                      <div className={`mt-1 text-[12px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(200,225,245,0.58)]'}`}>
+                        Review previous Deep SEO sessions and load any run back into Campaign progress.
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className={`rounded-full px-3 py-1 border font-mono text-[8px] uppercase tracking-[1.2px] ${isLightTheme ? 'border-[rgba(164,131,174,0.35)] text-[#8F6B97] bg-[rgba(255,255,255,0.6)]' : 'border-[rgba(14,200,198,0.3)] text-[rgba(14,200,198,0.8)] bg-[rgba(14,124,123,0.12)]'}`}>
+                        {campaignHistory.length} stored
+                      </div>
+                      {campaignHistory.length > 0 ? (
+                        <button
+                          onClick={handleClearCampaignHistory}
+                          className={`rounded-full border px-3 py-1.5 font-mono text-[8px] uppercase tracking-[1.1px] transition-all ${isLightTheme ? 'border-[rgba(185,156,190,0.45)] text-[#8F6B97] hover:bg-[rgba(244,228,243,0.82)]' : 'border-[rgba(255,90,90,0.28)] text-[rgba(255,150,150,0.86)] hover:bg-[rgba(110,30,30,0.2)]'}`}
+                        >
+                          Clear History
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {campaignHistory.length === 0 ? (
+                    <div className={`rounded-xl border px-4 py-5 text-center ${isLightTheme ? 'border-[rgba(185,156,190,0.24)] bg-[rgba(255,255,255,0.45)]' : 'border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)]'}`}>
+                      <div className={`font-mono text-[10px] uppercase tracking-[2px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(255,255,255,0.44)]'}`}>
+                        No Campaign History Yet
+                      </div>
+                      <div className={`mt-2 font-mono text-[9px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                        Launch a Deep SEO Campaign to create your first tracked session.
+                      </div>
+                      <button
+                        onClick={() => setActiveAgentsLever('campaigns')}
+                        className={`mt-3 rounded-full border px-3 py-1.5 font-mono text-[8px] uppercase tracking-[1.1px] transition-all ${isLightTheme ? 'border-[rgba(164,131,174,0.45)] text-[#8F6B97] hover:bg-[rgba(244,228,243,0.82)]' : 'border-[rgba(14,200,198,0.32)] text-[rgba(14,200,198,0.82)] hover:bg-[rgba(14,124,123,0.2)]'}`}
+                      >
+                        Go To Campaigns
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {campaignHistory.map(entry => {
+                        const isActive = entry.sessionId === a2aSessionId;
+                        const statusColor =
+                          entry.status === 'completed' ? 'rgba(14,200,198,0.9)'
+                          : entry.status === 'failed' ? 'rgba(255,120,120,0.9)'
+                          : 'rgba(255,210,90,0.9)';
+
+                        return (
+                          <div
+                            key={entry.sessionId}
+                            className={`flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 ${isActive
+                              ? (isLightTheme ? 'border-[rgba(185,156,190,0.45)] bg-[rgba(245,232,244,0.8)]' : 'border-[rgba(14,200,198,0.35)] bg-[rgba(14,124,123,0.1)]')
+                              : (isLightTheme ? 'border-[rgba(185,156,190,0.22)] bg-[rgba(255,255,255,0.45)]' : 'border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)]')}`}
+                          >
+                            <div className="flex-1 min-w-[220px]">
+                              <div className={`font-mono text-[10.5px] truncate ${isLightTheme ? 'text-[#8F6B97]' : 'text-[rgba(220,235,255,0.86)]'}`}>
+                                {entry.siteUrl}
+                              </div>
+                              <div className={`font-mono text-[9px] truncate mt-0.5 ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.5)]'}`}>
+                                {entry.keywords}
+                              </div>
+                              <div className={`font-mono text-[8px] mt-1 ${isLightTheme ? 'text-[rgba(155,126,166,0.74)]' : 'text-[rgba(180,200,220,0.32)]'}`}>
+                                {new Date(entry.launchedAt).toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="font-mono text-[8.5px] uppercase tracking-[1px]" style={{ color: statusColor }}>{entry.status}</div>
+                              {!isActive ? (
+                                <button
+                                  onClick={() => { void handleLoadCampaignSession(entry); }}
+                                  className={`font-mono text-[8px] uppercase tracking-[1px] px-2.5 py-1.5 rounded border transition-colors ${isLightTheme ? 'border-[rgba(185,156,190,0.45)] text-[#8F6B97] hover:bg-[rgba(244,228,243,0.82)]' : 'border-[rgba(14,200,198,0.3)] text-[rgba(14,200,198,0.78)] hover:bg-[rgba(14,124,123,0.2)]'}`}
+                                >
+                                  Load Session
+                                </button>
+                              ) : (
+                                <div className={`font-mono text-[8px] uppercase tracking-[1px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.55)]'}`}>Active</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </GlassCard>
+              </div>
+            )}
+
             {activeTab === 'analytics' && activeAnalyticsLever === 'traffic' && (
               <div>
                 {!isAnalyticsTrafficLoading && (analyticsChannels.length === 0 || analyticsTopPages.length === 0) ? (
@@ -3313,7 +3501,7 @@ export default function DashboardClient() {
                         Site Traffic · 30 Days
                       </div>
                       <div className="px-2 py-[3px] rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] font-mono text-[8px] text-[rgba(14,200,198,0.88)]">
-                        +18% MoM
+                        {trafficKpis.momLabel}
                       </div>
                     </div>
 
@@ -3349,7 +3537,7 @@ export default function DashboardClient() {
                         {isAnalyticsTrafficLoading ? (
                           <Skeleton className="h-8 w-16" />
                         ) : (
-                          <div className="font-display text-[29px] leading-none text-[rgba(14,200,198,0.95)]">12.4K</div>
+                          <div className="font-display text-[29px] leading-none text-[rgba(14,200,198,0.95)]">{trafficKpis.visitors}</div>
                         )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Visitors</div>
                       </div>
@@ -3357,7 +3545,7 @@ export default function DashboardClient() {
                         {isAnalyticsTrafficLoading ? (
                           <Skeleton className="h-8 w-12" />
                         ) : (
-                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">3.2</div>
+                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">{trafficKpis.pagesPerSession}</div>
                         )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Pages/Session</div>
                       </div>
@@ -3365,7 +3553,7 @@ export default function DashboardClient() {
                         {isAnalyticsTrafficLoading ? (
                           <Skeleton className="h-8 w-16" />
                         ) : (
-                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">2m 45s</div>
+                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">{trafficKpis.avgDuration}</div>
                         )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Avg Duration</div>
                       </div>
@@ -3373,7 +3561,7 @@ export default function DashboardClient() {
                         {isAnalyticsTrafficLoading ? (
                           <Skeleton className="h-8 w-14" />
                         ) : (
-                          <div className="font-display text-[29px] leading-none text-[rgba(30,165,80,0.9)]">38%</div>
+                          <div className="font-display text-[29px] leading-none text-[rgba(30,165,80,0.9)]">{trafficKpis.bounceRate}</div>
                         )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Bounce Rate</div>
                       </div>
@@ -3560,7 +3748,7 @@ export default function DashboardClient() {
                             <Skeleton className="mx-auto mb-1 h-7 w-16" />
                           ) : (
                             <div className="font-display text-[24px] leading-none font-bold text-[rgba(14,200,198,0.92)] mb-1">
-                              0.71%
+                              {conversionKpis.overallConvRate}
                             </div>
                           )}
                           <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] tracking-tight">
@@ -3572,7 +3760,7 @@ export default function DashboardClient() {
                             <Skeleton className="mx-auto mb-1 h-7 w-12" />
                           ) : (
                             <div className="font-display text-[24px] leading-none font-bold text-[rgba(30,165,80,0.85)] mb-1">
-                              31%
+                              {conversionKpis.trialToPaid}
                             </div>
                           )}
                           <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] tracking-tight">
@@ -3649,10 +3837,10 @@ export default function DashboardClient() {
                           ARR
                         </div>
                         <div className="font-display text-[28px] leading-none font-bold text-[rgba(14,200,198,0.95)]">
-                          $94K
+                          {conversionKpis.arr}
                         </div>
                         <div className="font-mono text-[8px] text-[rgba(30,165,80,0.8)] mt-1.5">
-                          ▲ +12% YoY
+                          {conversionKpis.arrGrowthLabel !== '—' ? `▲ ${conversionKpis.arrGrowthLabel}` : conversionKpis.arrGrowthLabel}
                         </div>
                       </div>
                       <div className="p-4 rounded-lg bg-[rgba(0,0,0,0.25)] border border-[rgba(255,80,80,0.25)]">
@@ -3660,10 +3848,10 @@ export default function DashboardClient() {
                           Churn Rate
                         </div>
                         <div className="font-display text-[28px] leading-none font-bold text-[rgba(255,120,120,0.95)]">
-                          3.2%
+                          {conversionKpis.churnRate}
                         </div>
                         <div className="font-mono text-[8px] text-[rgba(255,100,100,0.8)] mt-1.5">
-                          ▼ -0.8pp QoQ
+                          {conversionKpis.churnRate === '—' ? '—' : 'From payment data'}
                         </div>
                       </div>
                     </div>
@@ -3677,7 +3865,7 @@ export default function DashboardClient() {
                       Avg. Customer LTV
                     </div>
                     <div className="font-display text-[30px] font-bold text-[rgba(14,200,198,0.92)]">
-                      $8,450
+                      {conversionKpis.avgLtv}
                     </div>
                     <div className="font-mono text-[8px] text-[rgba(255,255,255,0.3)] mt-2">
                       Over 24 month avg
@@ -3689,7 +3877,7 @@ export default function DashboardClient() {
                       CAC Payback
                     </div>
                     <div className="font-display text-[30px] font-bold text-[rgba(30,165,80,0.85)]">
-                      4.2M
+                      {conversionKpis.cacPayback}
                     </div>
                     <div className="font-mono text-[8px] text-[rgba(255,255,255,0.3)] mt-2">
                       Months to recover
@@ -3701,10 +3889,10 @@ export default function DashboardClient() {
                       Active Subscriptions
                     </div>
                     <div className="font-display text-[30px] font-bold text-[rgba(255,210,100,0.92)]">
-                      1,247
+                      {conversionKpis.activeSubscriptions}
                     </div>
                     <div className="font-mono text-[8px] text-[rgba(255,255,255,0.3)] mt-2">
-                      Growing 8% MoM
+                      {conversionKpis.subsMomLabel}
                     </div>
                   </GlassCard>
                 </div>
@@ -3963,20 +4151,25 @@ export default function DashboardClient() {
 
                       {/* Actions */}
                       <div className="mt-auto flex items-center gap-2">
-                        <button className="rounded-full border border-[rgba(210,228,255,0.32)] bg-[rgba(210,228,255,0.07)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.82)] hover:bg-[rgba(210,228,255,0.14)] hover:text-white hover:border-[rgba(210,228,255,0.5)] transition-all duration-150"
+                        <button
+                          onClick={() => { void handleViewKbDoc(doc.id); }}
+                          disabled={viewKbDocLoading}
+                          className="rounded-full border border-[rgba(210,228,255,0.32)] bg-[rgba(210,228,255,0.07)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.82)] hover:bg-[rgba(210,228,255,0.14)] hover:text-white hover:border-[rgba(210,228,255,0.5)] disabled:opacity-40 transition-all duration-150"
                           style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.35)', background: 'rgba(185,156,190,0.08)' } : undefined}>
                           View
                         </button>
                         <button
+                          onClick={() => { void handleRetrainKbDoc(doc.id, doc.title); }}
+                          disabled={retrainLoadingDocId === doc.id}
                           className={[
-                            'rounded-full border px-4 py-1.5 text-[11px] font-semibold transition-all duration-150',
+                            'rounded-full border px-4 py-1.5 text-[11px] font-semibold transition-all duration-150 disabled:opacity-40',
                             doc.actionLabel === 'Edit'
                               ? 'border-[rgba(214,174,62,0.55)] bg-[rgba(214,174,62,0.18)] text-[rgba(255,212,96,0.97)] hover:bg-[rgba(214,174,62,0.3)] hover:border-[rgba(214,174,62,0.75)]'
                               : 'border-[rgba(14,200,198,0.5)] bg-[rgba(14,160,156,0.22)] text-[rgba(24,222,220,0.97)] hover:bg-[rgba(14,160,156,0.38)] hover:border-[rgba(14,200,198,0.72)]',
                           ].join(' ')}
                           style={isLightTheme && doc.actionLabel !== 'Edit' ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.45)', background: 'rgba(185,156,190,0.15)' } : undefined}
                         >
-                          {doc.actionLabel}
+                          {retrainLoadingDocId === doc.id ? 'Working…' : doc.actionLabel}
                         </button>
                       </div>
                     </GlassCard>
@@ -3997,56 +4190,243 @@ export default function DashboardClient() {
 
                 {/* KB Upload Modal */}
                 {showKbUpload && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.7)]">
-                    <div className="w-full max-w-md rounded-2xl border border-[rgba(14,200,198,0.28)] bg-[#080e18] p-6 shadow-[0_24px_64px_rgba(0,0,0,0.7)]">
-                      <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.7)] uppercase mb-4">Upload Document</div>
-                      <div className="space-y-3">
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.72)] backdrop-blur-sm"
+                    onClick={e => { if (e.target === e.currentTarget) { setShowKbUpload(false); setKbUploadTitle(''); setKbUploadContent(''); setKbFileName(null); } }}>
+                    <div
+                      className="w-full max-w-lg rounded-2xl border shadow-[0_32px_80px_rgba(0,0,0,0.75)] overflow-hidden"
+                      style={isLightTheme
+                        ? { background: 'rgba(252,248,255,0.98)', borderColor: 'rgba(143,107,151,0.35)', boxShadow: '0 32px 80px rgba(100,60,120,0.18)' }
+                        : { background: '#07101e', borderColor: 'rgba(14,200,198,0.25)' }}
+                    >
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-6 py-4 border-b"
+                        style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.2)' } : { borderColor: 'rgba(255,255,255,0.07)' }}>
                         <div>
-                          <label className="block font-mono text-[9px] text-[rgba(255,255,255,0.4)] mb-1">TITLE</label>
+                          <div className="font-mono text-[9px] tracking-[3px] uppercase mb-0.5"
+                            style={isLightTheme ? { color: '#9A6FA8' } : { color: 'rgba(14,200,198,0.65)' }}>
+                            Knowledge Base
+                          </div>
+                          <div className="font-[Rajdhani,sans-serif] text-[17px] font-bold"
+                            style={isLightTheme ? { color: '#4A3356' } : { color: 'rgba(230,242,255,0.95)' }}>
+                            Upload Document
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => { setShowKbUpload(false); setKbUploadTitle(''); setKbUploadContent(''); setKbFileName(null); }}
+                          className="w-8 h-8 rounded-full flex items-center justify-center transition-colors text-lg leading-none"
+                          style={isLightTheme
+                            ? { color: '#9A6FA8', background: 'rgba(143,107,151,0.1)' }
+                            : { color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.06)' }}>
+                          ×
+                        </button>
+                      </div>
+
+                      {/* Body */}
+                      <div className="px-6 py-5 space-y-4">
+                        {/* File drop zone */}
+                        <div>
+                          <label className="block font-mono text-[9px] tracking-[1.8px] uppercase mb-1.5"
+                            style={isLightTheme ? { color: '#A483AE' } : { color: 'rgba(255,255,255,0.38)' }}>
+                            File <span className="normal-case tracking-normal opacity-60">(PDF, TXT, MD, CSV — max 10 MB)</span>
+                          </label>
+                          <label
+                            className="flex items-center gap-3 w-full rounded-xl px-4 py-3 border border-dashed cursor-pointer transition-all duration-150"
+                            style={isLightTheme
+                              ? { background: 'rgba(143,107,151,0.05)', borderColor: kbFileName ? 'rgba(143,107,151,0.5)' : 'rgba(143,107,151,0.22)', color: '#7A5888' }
+                              : { background: 'rgba(255,255,255,0.03)', borderColor: kbFileName ? 'rgba(14,200,198,0.5)' : 'rgba(255,255,255,0.12)', color: 'rgba(14,200,198,0.75)' }}
+                          >
+                            <input
+                              type="file"
+                              accept=".pdf,.txt,.md,.csv"
+                              className="hidden"
+                              onChange={async e => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setKbFileLoading(true);
+                                setKbFileName(file.name);
+                                try {
+                                  if (file.name.match(/\.(txt|md|csv)$/i)) {
+                                    const text = await file.text();
+                                    setKbUploadContent(text.trim());
+                                    if (!kbUploadTitle.trim()) setKbUploadTitle(file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '));
+                                  } else {
+                                    const fd = new FormData();
+                                    fd.append('file', file);
+                                    const res = await fetch('/api/kb/parse-file', { method: 'POST', body: fd });
+                                    if (!res.ok) {
+                                      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+                                      throw new Error(err?.error ?? 'Failed to parse file');
+                                    }
+                                    const data = (await res.json()) as { text: string; filename: string };
+                                    setKbUploadContent(data.text);
+                                    if (!kbUploadTitle.trim()) setKbUploadTitle(file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '));
+                                  }
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : 'Failed to read file');
+                                  setKbFileName(null);
+                                } finally {
+                                  setKbFileLoading(false);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                            {kbFileLoading ? (
+                              <span className="font-mono text-[11px] opacity-60">Extracting text…</span>
+                            ) : kbFileName ? (
+                              <>
+                                <span className="text-base">&#128196;</span>
+                                <span className="font-mono text-[11px] flex-1 truncate">{kbFileName}</span>
+                                <span className="font-mono text-[9px] px-2 py-0.5 rounded-full"
+                                  style={isLightTheme ? { background: 'rgba(143,107,151,0.15)', color: '#7A5888' } : { background: 'rgba(14,200,198,0.15)', color: 'rgba(14,200,198,0.9)' }}>
+                                  Extracted ✓
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-base opacity-50">📎</span>
+                                <span className="font-mono text-[11px] opacity-55">Choose file or paste content below…</span>
+                              </>
+                            )}
+                          </label>
+                        </div>
+
+                        {/* Title field */}
+                        <div>
+                          <label className="block font-mono text-[9px] tracking-[1.8px] uppercase mb-1.5"
+                            style={isLightTheme ? { color: '#A483AE' } : { color: 'rgba(255,255,255,0.38)' }}>
+                            Title
+                          </label>
                           <input
                             type="text"
                             value={kbUploadTitle}
                             onChange={e => setKbUploadTitle(e.target.value)}
-                            placeholder="Document title…"
-                            className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
+                            placeholder="e.g. Brand Voice Guidelines 2026"
+                            className="w-full rounded-xl px-3.5 py-2.5 font-mono text-[12px] focus:outline-none transition-colors"
+                            style={isLightTheme
+                              ? { background: 'rgba(143,107,151,0.07)', border: '1px solid rgba(143,107,151,0.25)', color: '#3D2B4A', '::placeholder': 'rgba(143,107,151,0.45)' } as React.CSSProperties
+                              : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(230,242,255,0.9)' }}
                           />
                         </div>
+
+                        {/* Category pill buttons */}
                         <div>
-                          <label className="block font-mono text-[9px] text-[rgba(255,255,255,0.4)] mb-1">CATEGORY</label>
-                          <select
-                            value={kbUploadCategory}
-                            onChange={e => setKbUploadCategory(e.target.value as typeof kbUploadCategory)}
-                            className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                          >
-                            <option value="product-docs">Product Docs</option>
-                            <option value="brand">Brand</option>
-                            <option value="competitor-intel">Competitor Intel</option>
-                          </select>
+                          <label className="block font-mono text-[9px] tracking-[1.8px] uppercase mb-2"
+                            style={isLightTheme ? { color: '#A483AE' } : { color: 'rgba(255,255,255,0.38)' }}>
+                            Category
+                          </label>
+                          <div className="flex gap-2">
+                            {([
+                              { value: 'product-docs', label: 'Product Docs', icon: '📄' },
+                              { value: 'brand',        label: 'Brand',        icon: '✦' },
+                              { value: 'competitor-intel', label: 'Competitor', icon: '🔍' },
+                            ] as { value: typeof kbUploadCategory; label: string; icon: string }[]).map(opt => {
+                              const active = kbUploadCategory === opt.value;
+                              return (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() => setKbUploadCategory(opt.value)}
+                                  className="flex-1 rounded-xl py-2 px-2 font-mono text-[10px] font-semibold transition-all duration-150 border flex items-center justify-center gap-1.5"
+                                  style={isLightTheme
+                                    ? active
+                                      ? { background: 'rgba(143,107,151,0.2)', borderColor: 'rgba(143,107,151,0.55)', color: '#6B3F7A' }
+                                      : { background: 'rgba(143,107,151,0.05)', borderColor: 'rgba(143,107,151,0.15)', color: '#A483AE' }
+                                    : active
+                                      ? { background: 'rgba(14,124,123,0.25)', borderColor: 'rgba(14,200,198,0.55)', color: 'rgba(14,220,218,0.97)' }
+                                      : { background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }
+                                  }
+                                >
+                                  <span>{opt.icon}</span>
+                                  <span>{opt.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
+
+                        {/* Content textarea */}
                         <div>
-                          <label className="block font-mono text-[9px] text-[rgba(255,255,255,0.4)] mb-1">CONTENT</label>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="font-mono text-[9px] tracking-[1.8px] uppercase"
+                              style={isLightTheme ? { color: '#A483AE' } : { color: 'rgba(255,255,255,0.38)' }}>
+                              Content
+                            </label>
+                            <span className="font-mono text-[9px]"
+                              style={isLightTheme ? { color: '#B99CBE' } : { color: 'rgba(255,255,255,0.25)' }}>
+                              {kbUploadContent.trim() ? kbUploadContent.trim().split(/\s+/).filter(Boolean).length.toLocaleString() + ' words' : '0 words'}
+                            </span>
+                          </div>
                           <textarea
                             value={kbUploadContent}
                             onChange={e => setKbUploadContent(e.target.value)}
-                            placeholder="Paste document content here…"
-                            rows={5}
-                            className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[11px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)] resize-none"
+                            placeholder="Paste document content here, or upload a file above…"
+                            rows={6}
+                            className="w-full rounded-xl px-3.5 py-2.5 font-mono text-[11px] leading-relaxed focus:outline-none transition-colors resize-none"
+                            style={isLightTheme
+                              ? { background: 'rgba(143,107,151,0.06)', border: '1px solid rgba(143,107,151,0.22)', color: '#3D2B4A' }
+                              : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(220,235,255,0.85)' }}
                           />
                         </div>
                       </div>
-                      <div className="flex gap-2 mt-5">
+
+                      {/* Footer */}
+                      <div className="flex gap-2.5 px-6 pb-5 pt-1">
                         <button
                           onClick={() => { void handleKbUpload(); }}
-                          disabled={kbUploadLoading}
-                          className="flex-1 rounded-full border border-[rgba(14,200,198,0.45)] bg-[rgba(14,124,123,0.3)] py-2 font-mono text-[11px] font-bold text-[rgba(14,200,198,1)] hover:bg-[rgba(14,124,123,0.5)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                          disabled={kbUploadLoading || kbFileLoading || !kbUploadTitle.trim() || !kbUploadContent.trim()}
+                          className="flex-1 rounded-xl py-2.5 font-mono text-[11px] font-bold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+                          style={isLightTheme
+                            ? { background: 'rgba(143,107,151,0.18)', border: '1px solid rgba(143,107,151,0.45)', color: '#6B3F7A' }
+                            : { background: 'rgba(14,124,123,0.35)', border: '1px solid rgba(14,200,198,0.5)', color: 'rgba(14,220,218,1)' }}
                         >
-                          {kbUploadLoading ? 'Uploading…' : 'Upload'}
+                          {kbUploadLoading ? 'Uploading…' : kbFileLoading ? 'Reading file…' : 'Upload Document'}
                         </button>
                         <button
-                          onClick={() => { setShowKbUpload(false); setKbUploadTitle(''); setKbUploadContent(''); }}
-                          className="flex-1 rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] py-2 font-mono text-[11px] text-[rgba(255,255,255,0.5)] hover:bg-[rgba(255,255,255,0.1)] transition-all"
+                          onClick={() => { setShowKbUpload(false); setKbUploadTitle(''); setKbUploadContent(''); setKbFileName(null); }}
+                          className="rounded-xl px-5 py-2.5 font-mono text-[11px] transition-all duration-150"
+                          style={isLightTheme
+                            ? { background: 'rgba(143,107,151,0.07)', border: '1px solid rgba(143,107,151,0.18)', color: '#9A6FA8' }
+                            : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.45)' }}
                         >
                           Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* KB View Doc Modal */}
+                {viewKbDocState && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-start justify-center bg-[rgba(0,0,0,0.78)] backdrop-blur-sm overflow-y-auto py-10 px-4"
+                    onClick={e => { if (e.target === e.currentTarget) setViewKbDocState(null); }}
+                  >
+                    <div className="w-full max-w-2xl flex flex-col rounded-2xl border border-[rgba(14,200,198,0.28)] bg-[#080e18] shadow-[0_24px_64px_rgba(0,0,0,0.7)] my-auto">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-[rgba(255,255,255,0.08)] flex-shrink-0">
+                        <div className="min-w-0 pr-4">
+                          <div className="font-mono text-[9px] tracking-[2px] uppercase text-[rgba(14,200,198,0.65)] mb-1">{viewKbDocState.category}</div>
+                          <div className="font-[Rajdhani,sans-serif] text-[18px] font-bold text-[rgba(236,245,255,0.95)] truncate">{viewKbDocState.name}</div>
+                        </div>
+                        <button
+                          onClick={() => setViewKbDocState(null)}
+                          className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white hover:bg-[rgba(255,255,255,0.08)] text-xl leading-none transition-all"
+                        >×</button>
+                      </div>
+                      {/* Scrollable content — capped at 60vh so it never fills the whole screen */}
+                      <div className="overflow-y-auto px-6 py-5" style={{ maxHeight: '60vh' }}>
+                        <pre className="font-mono text-[12px] text-[rgba(220,235,255,0.78)] whitespace-pre-wrap leading-relaxed break-words">{viewKbDocState.content}</pre>
+                      </div>
+                      {/* Footer */}
+                      <div className="px-6 pb-5 pt-3 border-t border-[rgba(255,255,255,0.08)] flex-shrink-0 flex items-center justify-between">
+                        <span className="font-mono text-[9px] text-[rgba(255,255,255,0.25)]">
+                          {viewKbDocState.content.trim().split(/\s+/).filter(Boolean).length.toLocaleString()} words
+                        </span>
+                        <button
+                          onClick={() => setViewKbDocState(null)}
+                          className="rounded-full border border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.05)] px-5 py-2 font-mono text-[11px] text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.1)] transition-all"
+                        >
+                          Close
                         </button>
                       </div>
                     </div>

@@ -122,6 +122,11 @@ const assembleTenantContext = (store: CronAutopilotState, tenant: Tenant) => {
     mqls,
     sqls,
     hubspotConnected,
+    kbDocs: store.kbDocuments.slice(0, 10).map(d => ({
+      name:     d.title,
+      category: d.category,
+      content:  (d as unknown as { content?: string }).content ?? '',
+    })),
   };
 };
 
@@ -262,10 +267,29 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           { name: 'HubSpot CRM', statusText: hubspotToken ? 'Connected · Syncing' : 'Not Connected' },
         ];
 
-        const ctx = assembleTenantContext(
-          { ...store, settings: { integrations } },
-          tenant,
-        );
+        // Fetch KB doc content so agents receive brand/product context.
+        const tenantKbDocs = await db.select({
+          id:       kbDocumentsTable.id,
+          title:    kbDocumentsTable.name,
+          category: kbDocumentsTable.category,
+          content:  kbDocumentsTable.content,
+        }).from(kbDocumentsTable)
+          .where(eq(kbDocumentsTable.tenantId, tenant.id))
+          .limit(10);
+
+        // Merge content into store kbDocuments so assembleTenantContext can use it.
+        const storeWithKb = {
+          ...store,
+          settings: { integrations },
+          kbDocuments: tenantKbDocs.map(d => ({
+            id:       d.id,
+            title:    d.title ?? '',
+            category: (d.category ?? 'product-docs') as 'product-docs' | 'brand' | 'competitor-intel',
+            content:  d.content ?? '',
+          })),
+        };
+
+        const ctx = assembleTenantContext(storeWithKb, tenant);
 
         const result = await runAutopilot(tenant, { context: ctx });
         await persistAutopilotRun(tenant.id, result);
