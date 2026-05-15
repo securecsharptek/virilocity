@@ -1,6 +1,7 @@
 import { getSecret } from '../../auth/keyvault';
+import { publishPost as publishToHubSpotCMS } from './hubspot.cms.connector';
 
-export type CMSProvider = 'shopify' | 'webflow';
+export type CMSProvider = 'shopify' | 'webflow' | 'wordpress' | 'hubspot';
 
 export type CMSPublishStatus = 'draft' | 'published';
 
@@ -56,6 +57,12 @@ type ShopifyCreds = {
 type WebflowCreds = {
   token: string;
   collectionId: string;
+};
+
+type WordPressCreds = {
+  apiUrl: string;
+  user: string;
+  appPassword: string;
 };
 
 const SHOPIFY_API_VERSION = '2024-10';
@@ -242,6 +249,65 @@ const publishToWebflow = async (input: CMSPublishInput): Promise<CMSPublishResul
   };
 };
 
+const loadWordPressCreds = async (tenantId: string): Promise<WordPressCreds> => {
+  const apiUrl = (await getSecret(`wp-url-${tenantId}`)) || (await getSecret(`wordpress-api-url-${tenantId}`));
+  const user = (await getSecret(`wp-user-${tenantId}`)) || (await getSecret(`wordpress-user-${tenantId}`));
+  const appPassword = (await getSecret(`wp-password-${tenantId}`)) || (await getSecret(`wordpress-app-password-${tenantId}`));
+  if (!apiUrl || !user || !appPassword) {
+    throw asStructuredError('wordpress', 'Missing WordPress credentials in Key Vault', 'missing_credentials', false, {
+      expectedSecrets: ['wp-url-{tenantId}', 'wp-user-{tenantId}', 'wp-password-{tenantId}'],
+    });
+  }
+  return { apiUrl: apiUrl.trim().replace(/\/+$/, ''), user: user.trim(), appPassword: appPassword.trim() };
+};
+
+const publishToWordPress = async (input: CMSPublishInput): Promise<CMSPublishResult> => {
+  const creds = await loadWordPressCreds(input.tenantId);
+  const bodyHtml = injectSchemaJsonLd(input.htmlBody, input.schemaJson);
+  const publishNow = (input.status ?? 'published') === 'published';
+  const token = Buffer.from(`${creds.user}:${creds.appPassword}`, 'utf8').toString('base64');
+
+  let response: Response;
+  try {
+    response = await fetch(`${creds.apiUrl}/wp-json/wp/v2/posts`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: input.title,
+        slug: input.slug,
+        content: bodyHtml,
+        status: publishNow ? 'publish' : 'draft',
+      }),
+    });
+  } catch (error) {
+    throw asStructuredError('wordpress', 'WordPress request failed', 'network_error', true, {
+      cause: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const raw = await response.text();
+  let data: Record<string, unknown> = {};
+  try { data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}; } catch { data = { raw }; }
+
+  if (!response.ok) {
+    throw asStructuredError('wordpress', `WordPress rejected publish request (${response.status})`, 'upstream_rejected', response.status >= 500, {
+      status: response.status,
+      body: data,
+    });
+  }
+
+  const itemId = String(data['id'] ?? '');
+  if (!itemId) {
+    throw asStructuredError('wordpress', 'WordPress response missing post id', 'request_failed', false, { body: data });
+  }
+
+  const url = typeof data['link'] === 'string' ? data['link'] : undefined;
+  return { provider: 'wordpress', itemId, url, status: publishNow ? 'published' : 'draft' };
+};
+
 export const publishCMSContent = async (input: CMSPublishInput): Promise<CMSPublishResult> => {
   if (!input.tenantId || !input.title || !input.slug || !input.htmlBody) {
     throw asStructuredError(input.provider, 'tenantId, title, slug, and htmlBody are required', 'invalid_payload', false);
@@ -249,6 +315,23 @@ export const publishCMSContent = async (input: CMSPublishInput): Promise<CMSPubl
 
   if (input.provider === 'shopify') return publishToShopify(input);
   if (input.provider === 'webflow') return publishToWebflow(input);
+  if (input.provider === 'wordpress') return publishToWordPress(input);
+  if (input.provider === 'hubspot') {
+    try {
+      const result = await publishToHubSpotCMS(input.tenantId, {
+        title: input.title,
+        slug: input.slug,
+        htmlBody: input.htmlBody,
+        schemaJson: input.schemaJson,
+        status: (input.status ?? 'published') as 'draft' | 'published',
+      });
+      return { provider: 'hubspot', itemId: result.itemId, url: result.url, status: result.status };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const setupBlocked = message.startsWith('HubSpot CMS publish is blocked:');
+      throw asStructuredError('hubspot', message, setupBlocked ? 'missing_credentials' : 'unknown', false);
+    }
+  }
 
   throw asStructuredError(input.provider, `Unsupported provider: ${input.provider}`, 'invalid_payload', false);
 };

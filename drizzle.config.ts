@@ -13,7 +13,7 @@ const getDatabaseUrl = (): string => {
     const match = content.match(/^DATABASE_URL\s*=\s*(.+)$/m);
     if (!match || !match[1]) return '';
 
-    const rawValue = match[1].trim();
+    const rawValue = (match[1] ?? '').trim();
     const unquoted = rawValue.replace(/^['"]|['"]$/g, '');
     return unquoted;
   } catch {

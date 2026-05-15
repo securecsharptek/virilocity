@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate, authErrorToHttp } from '../../../../lib/auth/middleware';
 import { getSecret } from '../../../../lib/auth/keyvault';
+import { getM365ConnectionStatus } from '../../../../lib/m365/token-store';
 
 export const runtime = 'nodejs';
 
@@ -41,7 +42,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // Compute status for integrations in parallel
   const statuses = await Promise.all([
     checkHubSpot(tenantId),
-    checkM365(tenant),
+    checkLinkedIn(tenantId),
+    checkM365(tenantId),
     checkNeon(),
     checkRedis(),
     checkClaudeApi(),
@@ -70,10 +72,23 @@ async function checkHubSpot(tenantId: string): Promise<IntegrationStatus> {
   }
 }
 
-async function checkM365(tenant: { metadata?: Record<string, unknown> }): Promise<IntegrationStatus> {
+async function checkLinkedIn(tenantId: string): Promise<IntegrationStatus> {
   try {
-    // M365 is connected if tenant.metadata has 'm365TokenRef' set
-    const connected = !!(tenant.metadata?.['m365TokenRef']);
+    const token = await getSecret(`linkedin-access-${tenantId}`);
+    return {
+      name: 'LinkedIn',
+      connected: !!token && token.length > 0,
+      reason: token ? undefined : 'key_missing',
+    };
+  } catch (e) {
+    return { name: 'LinkedIn', connected: false, reason: 'unavailable' };
+  }
+}
+
+async function checkM365(tenantId: string): Promise<IntegrationStatus> {
+  try {
+    const status = await getM365ConnectionStatus(tenantId);
+    const connected = status.connected;
     return {
       name: 'Microsoft 365',
       connected,
@@ -184,6 +199,11 @@ function mapToIntegrationItems(statuses: IntegrationStatus[]): IntegrationItem[]
       'Microsoft 365': {
         icon: '🔷',
         desc: 'Teams · SharePoint · Mail · MSAL · SAML SSO',
+        defaultStatus: 'Connected',
+      },
+      'LinkedIn': {
+        icon: '🔗',
+        desc: 'OAuth 2.0 · Direct social post publishing',
         defaultStatus: 'Connected',
       },
       'Anthropic Claude API': {

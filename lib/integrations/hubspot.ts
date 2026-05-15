@@ -5,25 +5,51 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Tenant } from '../types/index';
 
-const HS_BASE       = 'https://api.hubapi.com';
-const SCOPES        = [
+const HS_BASE = 'https://api.hubapi.com';
+
+// Scopes must exactly match the Required scopes configured in the HubSpot app
+// (app-na2.hubspot.com/developer/.../auth → Scopes).
+// Keep content scope opt-in because many tenants only configure CRM scopes.
+const DEFAULT_BASE_SCOPES = [
   'crm.objects.contacts.read',
   'crm.objects.contacts.write',
   'crm.objects.deals.read',
   'crm.objects.deals.write',
-  'timeline',
-].join(' ');
+  'oauth',
+];
+
+const parseScopes = (raw: string): string[] => {
+  return raw
+    .split(/[\s,]+/)
+    .map(scope => scope.trim())
+    .filter(Boolean);
+};
+
+const getBaseScopes = (): string[] => {
+  const explicit = (process.env['HUBSPOT_OAUTH_SCOPES'] ?? '').trim();
+  if (explicit) return parseScopes(explicit);
+  return [...DEFAULT_BASE_SCOPES];
+};
+
+const buildScopes = (includeContentScope: boolean): string => {
+  const scopes = getBaseScopes();
+  if (includeContentScope && !scopes.includes('content')) {
+    scopes.push('content');
+  }
+  return scopes.join(' ');
+};
 
 // ── OAuth2 ────────────────────────────────────────────────────────────────────
 export class HubSpotAuth {
-  static getAuthUrl(tenantId: string): string {
-    const params = new URLSearchParams({
-      client_id:    process.env['HUBSPOT_CLIENT_ID'] ?? '',
-      redirect_uri: `${process.env['NEXT_PUBLIC_APP_URL'] ?? ''}/api/hubspot/callback`,
-      scope:        SCOPES,
-      state:        tenantId,
-    });
-    return `https://app.hubspot.com/oauth/authorize?${params}`;
+  static getAuthUrl(tenantId: string, options?: { includeContentScope?: boolean }): string {
+    // URLSearchParams encodes spaces as '+' but HubSpot OAuth requires '%20'.
+    // Build the query string manually to ensure correct encoding.
+    const includeContentScope = options?.includeContentScope === true;
+    const clientId    = encodeURIComponent(process.env['HUBSPOT_CLIENT_ID'] ?? '');
+    const redirectUri = encodeURIComponent(`${process.env['NEXT_PUBLIC_APP_URL'] ?? ''}/api/hubspot/callback`);
+    const scope       = encodeURIComponent(buildScopes(includeContentScope));   // spaces → %20
+    const state       = encodeURIComponent(tenantId);
+    return `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
   }
 
   static async exchangeCode(code: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
@@ -69,8 +95,25 @@ export class HubSpotContacts {
   constructor(private readonly accessToken: string) {}
 
   async listContacts(limit = 100): Promise<Array<{ id: string; properties?: Record<string, string | null> }>> {
+    const propertyList = [
+      'email',
+      'firstname',
+      'lastname',
+      'company',
+      'lifecyclestage',
+      'hs_lead_status',
+      'hs_lead_score',
+      'hubspotscore',
+      'hs_predictivecontactscore_v2',
+      'risk',
+      'risk_level',
+      'churn_risk',
+      'churn_risk_score',
+      'lastmodifieddate',
+    ].join(',');
+
     const resp = await fetch(
-      `${HS_BASE}/crm/v3/objects/contacts?limit=${Math.max(1, Math.min(limit, 100))}&properties=email,firstname,lastname,company,lifecyclestage,hs_lead_status,hs_lead_score,hubspotscore`,
+      `${HS_BASE}/crm/v3/objects/contacts?limit=${Math.max(1, Math.min(limit, 100))}&properties=${propertyList}`,
       { headers: { Authorization: `Bearer ${this.accessToken}` } },
     );
     if (!resp.ok) throw new Error(`HubSpot list contacts failed: ${resp.status}`);

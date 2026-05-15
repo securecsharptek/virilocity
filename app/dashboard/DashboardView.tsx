@@ -3,7 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import DashboardHeader from '../../components/layout/DashboardHeader';
 import TabButton from '../../components/ui/TabButton';
 import Lever from '../../components/ui/Lever';
@@ -11,9 +12,11 @@ import KPICard from '../../components/ui/KPICard';
 import GlassCard from '../../components/ui/GlassCard';
 import Skeleton from '../../components/ui/Skeleton';
 import IntegrationActionButton from '../../components/ui/IntegrationActionButton';
+import Modal from '../../components/ui/Modal';
 import SectionHeader from '../../components/ui/SectionHeader';
 import ActivityFeed, { type FeedItem } from '../../components/ui/ActivityFeed';
 import ToastContainer, { useToast } from '../../components/ui/Toast';
+import CMSConnections from './settings/cms/CMSConnections';
 
 const FEED_ITEMS: FeedItem[] = [
   {
@@ -98,32 +101,7 @@ type HITLQueueItem = {
   queuedAgo?: string;
 };
 
-const HITL_QUEUE_ITEMS: HITLQueueItem[] = [
-  {
-    id: '1',
-    subreddit: 'r/SaaSMarketing',
-    title: 'How We Cut CAC by 48% with AI Agents',
-    agent: 'reddit_manager',
-    platform: 'Reddit',
-    content: "We've been running an AI agent stack for 90 days now. Here's what actually moved the needle on CAC: automated lead scoring cut unqualified demos by 58% · content agents CRUSHED our content team meltdown by 2x/day, and email grooming plugged an ugly abandon % bonus early. Happy to share the full breakdown...",
-  },
-  {
-    id: '2',
-    subreddit: 'r/ArtificialIntelligence',
-    title: 'Fairness Filtering in Production AI Agents',
-    agent: 'reddit_manager',
-    platform: 'Reddit',
-    content: 'Running HIST TSEV-aligned Fairness Filters on LLM outputs at scale. Our setup: ContentFairnessFilter runs on every agent output, cutting > LLM scores & bias categories. Only outputs scoring >70 pass. We log every audit with an expdate for compliance. Works a ton open implementation patterns.',
-  },
-  {
-    id: '3',
-    subreddit: 'r/Startups',
-    title: 'Enterprise SaaS Lessons from Year 2',
-    agent: 'reddit_manager',
-    platform: 'Reddit',
-    content: "Year 2 of building a B2B SaaS for marketing teams. Three things I wish I'd known: (1) Enterprise contracts take 3-5 months to close, budget accordingly; (2) Microsoft partner status opens procurement doors you didn't even know existed; (3) SAML SSO isn't just a feature, it's THE key for 5-figure+ ACVs.",
-  },
-];
+const HITL_QUEUE_ITEMS: HITLQueueItem[] = [];
 
 type AgentCard = {
   id: string;
@@ -221,6 +199,8 @@ interface DashboardApiResponse {
     funnel: FunnelStage[];
     revenueBreakdown: RevenueSegment[];
     abTests: ABTest[];
+    trafficKpis?: TrafficKpis;
+    conversionKpis?: ConversionKpis;
   };
   contacts?: {
     all: Contact[];
@@ -232,6 +212,8 @@ interface DashboardApiResponse {
       activeSegments: number;
     };
   };
+  socialPosts?: SocialPost[];
+  blogArticles?: BlogArticle[];
   settings?: {
     billingHistory: BillingHistoryItem[];
     platformStatus: PlatformStatusItem[];
@@ -240,6 +222,48 @@ interface DashboardApiResponse {
     authItems: AuthItem[];
   };
 }
+
+type A2AStepStatus = 'queued' | 'running' | 'success' | 'failed' | 'skipped';
+type A2ASessionStatus = 'active' | 'completed' | 'failed';
+
+type A2AStep = {
+  id: string;
+  agent: string;
+  status: A2AStepStatus;
+  startedAt?: string;
+  finishedAt?: string;
+  outputSummary?: string;
+  error?: string;
+};
+
+type A2AMessage = {
+  id: string;
+  role: 'system' | 'orchestrator' | 'agent';
+  agent?: string;
+  content: string;
+  createdAt: string;
+};
+
+type A2ASession = {
+  id: string;
+  tenantId: string;
+  orchestrator: string;
+  agents: string[];
+  goal: string;
+  status: A2ASessionStatus;
+  messages: A2AMessage[];
+  steps: A2AStep[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CampaignHistoryEntry = {
+  sessionId: string;
+  siteUrl: string;
+  keywords: string;
+  status: A2ASessionStatus;
+  launchedAt: string;
+};
 
 type OrgMember = {
   id: string;
@@ -280,21 +304,9 @@ type AnalyticsTopPage = {
   generatedBy: string;
 };
 
-const ANALYTICS_CHANNELS: AnalyticsChannel[] = [
-  { name: 'Organic Search', visits: '5,840', share: 47, accent: 'teal' as const },
-  { name: 'Direct', visits: '2,400', share: 20, accent: 'teal' as const },
-  { name: 'LinkedIn (AI agent)', visits: '1,860', share: 15, accent: 'teal' as const },
-  { name: 'Email (agent)', visits: '1,240', share: 10, accent: 'teal' as const },
-  { name: 'Reddit (HITL)', visits: '980', share: 8, accent: 'gold' as const },
-];
+const ANALYTICS_CHANNELS: AnalyticsChannel[] = [];
 
-const ANALYTICS_TOP_PAGES: AnalyticsTopPage[] = [
-  { page: '/blog/ai-marketing-agents-2026', visits: '2,140', avgPosition: '3.2', ctr: '12.8%', generatedBy: 'blog_writer' },
-  { page: '/blog/saas-cac-reduction', visits: '1,820', avgPosition: '5.4', ctr: '9.4%', generatedBy: 'blog_writer' },
-  { page: '/features/autopilot', visits: '1,240', avgPosition: '8.1', ctr: '6.2%', generatedBy: 'Manual' },
-  { page: '/blog/content-fairness-ai', visits: '980', avgPosition: '11.3', ctr: '4.8%', generatedBy: 'blog_writer' },
-  { page: '/pricing', visits: '840', avgPosition: '—', ctr: '—', generatedBy: 'Manual' },
-];
+const ANALYTICS_TOP_PAGES: AnalyticsTopPage[] = [];
 
 type FunnelStage = {
   label: string;
@@ -303,12 +315,47 @@ type FunnelStage = {
   dropoff?: number;
 };
 
-const CONVERSION_FUNNEL: FunnelStage[] = [
-  { label: 'Visitors', count: 12400, percentage: 100 },
-  { label: 'Sign-ups', count: 1017, percentage: 8.2, dropoff: 91.8 },
-  { label: 'Trial Users', count: 284, percentage: 2.3, dropoff: 72.0 },
-  { label: 'Paid Customers', count: 88, percentage: 0.7, dropoff: 69.0 },
-];
+type TrafficKpis = {
+  visitors: string;
+  momLabel: string;
+  pagesPerSession: string;
+  avgDuration: string;
+  bounceRate: string;
+};
+
+type ConversionKpis = {
+  overallConvRate: string;
+  trialToPaid: string;
+  arr: string;
+  arrGrowthLabel: string;
+  churnRate: string;
+  avgLtv: string;
+  cacPayback: string;
+  activeSubscriptions: string;
+  subsMomLabel: string;
+};
+
+const DEFAULT_TRAFFIC_KPIS: TrafficKpis = {
+  visitors: '—',
+  momLabel: '—',
+  pagesPerSession: '—',
+  avgDuration: '—',
+  bounceRate: '—',
+};
+
+const DEFAULT_CONVERSION_KPIS: ConversionKpis = {
+  overallConvRate: '—',
+  trialToPaid: '—',
+  arr: '—',
+  arrGrowthLabel: '—',
+  churnRate: '—',
+  avgLtv: '—',
+  cacPayback: '—',
+  activeSubscriptions: '—',
+  subsMomLabel: '—',
+};
+
+const CONVERSION_FUNNEL: FunnelStage[] = [];
 
 type RevenueSegment = {
   tier: string;
@@ -317,11 +364,7 @@ type RevenueSegment = {
   color: string;
 };
 
-const REVENUE_BREAKDOWN: RevenueSegment[] = [
-  { tier: 'Enterprise', revenue: 4000, percentage: 50, color: 'rgba(255,210,100,0.9)' },
-  { tier: 'Pro', revenue: 2640, percentage: 32, color: 'rgba(14,200,198,0.85)' },
-  { tier: 'Starter', revenue: 300, percentage: 10, color: 'rgba(100,150,180,0.75)' },
-];
+const REVENUE_BREAKDOWN: RevenueSegment[] = [];
 
 type ABTest = {
   id: string;
@@ -340,42 +383,7 @@ type ABTest = {
   status: 'complete' | 'running' | 'too-early';
 };
 
-const AB_TESTS: ABTest[] = [
-  {
-    id: '1',
-    name: 'Hero CTA Button',
-    variantA: { label: '"Start Free Trial"', lift: -4.2 },
-    variantB: { label: '"See It In Action"', lift: -5.0 },
-    winner: 'B',
-    winnerLift: 23,
-    confidence: 97.3,
-    status: 'complete',
-  },
-  {
-    id: '2',
-    name: 'Pricing Page Layout',
-    variantA: { label: 'Cards · $91 ARPU', lift: 0 },
-    variantB: { label: 'Table · $98 ARPU', lift: 0 },
-    confidence: 62.4,
-    status: 'running',
-  },
-  {
-    id: '3',
-    name: 'Email Subject Line',
-    variantA: { label: '"Grow faster with AI" · 18%', lift: 0 },
-    variantB: { label: '"Your AI team is ready" · 24%', lift: 0 },
-    confidence: 78.1,
-    status: 'running',
-  },
-  {
-    id: '4',
-    name: 'Onboarding Flow',
-    variantA: { label: '5-step wizard · 38%', lift: 0 },
-    variantB: { label: '3-step + video · 41%', lift: 0 },
-    confidence: 34.2,
-    status: 'too-early',
-  },
-];
+const AB_TESTS: ABTest[] = [];
 
 type KnowledgeDoc = {
   id: string;
@@ -392,48 +400,6 @@ const kbCategoryToneClass: Record<KnowledgeDoc['category'], string> = {
   'competitor-intel': 'text-[rgba(72,196,130,0.85)]',
 };
 
-const KNOWLEDGE_BASE_DOCS: KnowledgeDoc[] = [
-  {
-    id: '1',
-    category: 'product-docs',
-    title: 'Virilocity Platform Overview',
-    words: '4,280 words',
-    updated: 'Updated 2d ago',
-    actionLabel: 'Re-train',
-  },
-  {
-    id: '2',
-    category: 'product-docs',
-    title: '39 Agent Capabilities Guide',
-    words: '8,640 words',
-    updated: 'Updated today',
-    actionLabel: 'Re-train',
-  },
-  {
-    id: '3',
-    category: 'brand',
-    title: 'Brand Voice & Tone Guidelines',
-    words: '2,100 words',
-    updated: 'Updated 5d ago',
-    actionLabel: 'Edit',
-  },
-  {
-    id: '4',
-    category: 'competitor-intel',
-    title: 'Market Landscape Analysis',
-    words: '6,320 words',
-    updated: 'Updated 1w ago',
-    actionLabel: 'Re-train',
-  },
-  {
-    id: '5',
-    category: 'product-docs',
-    title: 'Pricing & Tier Comparison',
-    words: '1,840 words',
-    updated: 'Updated 3d ago',
-    actionLabel: 'Re-train',
-  },
-];
 
 const contentCategoryLabel: Record<KnowledgeDoc['category'], string> = {
   'product-docs': 'Product Docs',
@@ -451,39 +417,42 @@ type SocialPost = {
   body: string[];
   primaryAction: string;
   secondaryAction: string;
+  status: 'draft' | 'posted';
 };
 
-const SOCIAL_POSTS: SocialPost[] = [
-  {
-    id: '1',
-    channel: 'LINKEDIN',
-    handle: 'linkedin_poster',
-    generatedAgo: 'Generated 1h ago',
-    bias: '88.2',
-    model: 'Sonnet',
-    body: [
-      '🚀 We just hit 284 leads this week — all generated by our AI agent stack.',
-      'The breakdown: blog_writer → SEO traffic, lead_qualifier → scores in HubSpot, email_campaigner → nurture sequences. Human effort: reviewing HITL-gated content (15 min/day).',
-      'The ROI math is starting to make a lot of sense. What\'s your experience with AI-assisted marketing? 👇 #AI #SaaS #Marketing',
-    ],
-    primaryAction: 'Post Now',
-    secondaryAction: 'Edit',
-  },
-  {
-    id: '2',
-    channel: 'EMAIL SUBJECT',
-    handle: 'email_campaigner',
-    generatedAgo: 'Generated 2h ago',
-    bias: null,
-    model: 'Haiku',
-    body: [
-      'Subject: "Your AI marketing team ran 34 tasks while you slept"',
-      'Preview: See what your agents accomplished overnight...',
-    ],
-    primaryAction: 'Send',
-    secondaryAction: 'A/B Test',
-  },
-];
+// const SOCIAL_POSTS: SocialPost[] = [
+//   {
+//     id: '1',
+//     channel: 'LINKEDIN',
+//     handle: 'linkedin_poster',
+//     generatedAgo: 'Generated 1h ago',
+//     bias: '88.2',
+//     model: 'Sonnet',
+//     body: [
+//       '🚀 We just hit 284 leads this week — all generated by our AI agent stack.',
+//       'The breakdown: blog_writer → SEO traffic, lead_qualifier → scores in HubSpot, email_campaigner → nurture sequences. Human effort: reviewing HITL-gated content (15 min/day).',
+//       'The ROI math is starting to make a lot of sense. What\'s your experience with AI-assisted marketing? 👇 #AI #SaaS #Marketing',
+//     ],
+//     primaryAction: 'Post Now',
+//     secondaryAction: 'Edit',
+//     status: 'draft',
+//   },
+//   {
+//     id: '2',
+//     channel: 'EMAIL SUBJECT',
+//     handle: 'email_campaigner',
+//     generatedAgo: 'Generated 2h ago',
+//     bias: null,
+//     model: 'Haiku',
+//     body: [
+//       'Subject: "Your AI marketing team ran 34 tasks while you slept"',
+//       'Preview: See what your agents accomplished overnight...',
+//     ],
+//     primaryAction: 'Send',
+//     secondaryAction: 'A/B Test',
+//     status: 'draft',
+//   },
+// ];
 
 type BlogArticle = {
   id: string;
@@ -492,47 +461,11 @@ type BlogArticle = {
   bias: string;
   published: string | null;
   visits: string | null;
+  source?: 'hitl' | 'agent' | 'manual';
   action: 'Preview' | 'View';
 };
 
-const BLOG_ARTICLES: BlogArticle[] = [
-  {
-    id: '1',
-    title: '10 AI Marketing Trends for 2025',
-    words: '1,240',
-    bias: '84.2',
-    published: null,
-    visits: null,
-    action: 'Preview',
-  },
-  {
-    id: '2',
-    title: 'How We Cut CAC by 40% with AI Agents',
-    words: '2,180',
-    bias: '81.0',
-    published: 'Apr 10',
-    visits: '2,140',
-    action: 'View',
-  },
-  {
-    id: '3',
-    title: 'Content Fairness in Production AI',
-    words: '1,640',
-    bias: '88.5',
-    published: 'Apr 7',
-    visits: '980',
-    action: 'View',
-  },
-  {
-    id: '4',
-    title: 'B2B Marketing Automation: Complete Guide',
-    words: '3,400',
-    bias: '92.1',
-    published: 'Apr 3',
-    visits: '1,820',
-    action: 'View',
-  },
-];
+const BLOG_ARTICLES: BlogArticle[] = [];
 
 type Contact = {
   id: string;
@@ -654,6 +587,14 @@ type IntegrationItem = {
   textColor: string;
 };
 
+type CmsPlatformConnection = {
+  provider: string;
+  configured: boolean;
+  connected: boolean;
+  statusText: string;
+  details?: string;
+};
+
 type TevvControlItem = {
   code: string;
   detail: string;
@@ -724,12 +665,12 @@ export default function DashboardClient() {
   const [autopilotPaused, setAutopilotPaused] = useState(false);
   const [countdownText, setCountdownText] = useState('02:04:03');
   const [kpis, setKpis] = useState({
-    activeAgents: 12,
-    postsGenerated: 47,
-    leadsCaptured: 284,
-    mrr: 8320,
+    activeAgents: 0,
+    postsGenerated: 0,
+    leadsCaptured: 0,
+    mrr: 0,
   });
-  const [feedItems, setFeedItems] = useState<FeedItem[]>(FEED_ITEMS);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [autopilotTasks, setAutopilotTasks] = useState<TaskScheduleItem[]>(AUTOPILOT_TASKS);
   const [hitlQueueItems, setHitlQueueItems] = useState<HITLQueueItem[]>(HITL_QUEUE_ITEMS);
   const [agentCards, setAgentCards] = useState<AgentCard[]>(AGENT_CARDS);
@@ -740,28 +681,32 @@ export default function DashboardClient() {
   const [conversionFunnel, setConversionFunnel] = useState<FunnelStage[]>(CONVERSION_FUNNEL);
   const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueSegment[]>(REVENUE_BREAKDOWN);
   const [abTests, setAbTests] = useState<ABTest[]>(AB_TESTS);
-  const [contacts, setContacts] = useState<Contact[]>(CONTACTS);
-  const [pipelineCols, setPipelineCols] = useState<PipelineCol[]>(PIPELINE_COLS);
-  const [segments, setSegments] = useState<Segment[]>(SEGMENTS);
+  const [trafficKpis, setTrafficKpis] = useState<TrafficKpis>(DEFAULT_TRAFFIC_KPIS);
+  const [conversionKpis, setConversionKpis] = useState<ConversionKpis>(DEFAULT_CONVERSION_KPIS);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [pipelineCols, setPipelineCols] = useState<PipelineCol[]>([]);
+  const [segments, setSegments] = useState<Segment[]>([]);
   const [contactsSummary, setContactsSummary] = useState({
-    totalSynced: 284,
-    pipelineValue: '$142K',
-    activeSegments: 6,
+    totalSynced: 0,
+    pipelineValue: '$0',
+    activeSegments: 0,
   });
-  const [billingHistory, setBillingHistory] = useState<BillingHistoryItem[]>(BILLING_HISTORY);
+  const [billingHistory, setBillingHistory] = useState<BillingHistoryItem[]>([]);
   const [platformStatuses, setPlatformStatuses] = useState<PlatformStatusItem[]>(PLATFORM_STATUS);
   const [integrations, setIntegrations] = useState<IntegrationItem[]>(INTEGRATIONS);
+  const [socialPosts, setSocialPosts] = useState<SocialPost[]>([]);
   const [tevvControls, setTevvControls] = useState<TevvControlItem[]>(TEVV_CONTROLS);
   const [authItems, setAuthItems] = useState<AuthItem[]>(AUTH_ITEMS);
   const [lastRunSummary, setLastRunSummary] = useState({
-    completedTasks: 34,
-    postsCreated: 58,
-    hitlPending: 3,
-    durationText: '02:18',
+    completedTasks: 0,
+    postsCreated: 0,
+    hitlPending: 0,
+    durationText: '—',
   });
   const [userProfile, setUserProfile] = useState({ name: '', initials: '', email: '', tenant: '', tier: 'free' });
-  const [kbDocuments, setKbDocuments] = useState<KnowledgeDoc[]>(KNOWLEDGE_BASE_DOCS);
+  const [kbDocuments, setKbDocuments] = useState<KnowledgeDoc[]>([]);
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  const [blogArticles, setBlogArticles] = useState<BlogArticle[]>([]);
   const [agentsTotal, setAgentsTotal] = useState(39);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -771,6 +716,11 @@ export default function DashboardClient() {
   const [kbUploadContent, setKbUploadContent] = useState('');
   const [showKbUpload, setShowKbUpload] = useState(false);
   const [kbUploadLoading, setKbUploadLoading] = useState(false);
+  const [viewKbDocState, setViewKbDocState] = useState<{ id: string; name: string; category: string; content: string } | null>(null);
+  const [viewKbDocLoading, setViewKbDocLoading] = useState(false);
+  const [retrainLoadingDocId, setRetrainLoadingDocId] = useState<string | null>(null);
+  const [kbFileLoading, setKbFileLoading] = useState(false);
+  const [kbFileName, setKbFileName] = useState<string | null>(null);
   const [editDraftItem, setEditDraftItem] = useState<HITLQueueItem | null>(null);
   const [editDraftContent, setEditDraftContent] = useState('');
   const [editDraftTitle, setEditDraftTitle] = useState('');
@@ -778,11 +728,24 @@ export default function DashboardClient() {
   const [dashboardLoadState, setDashboardLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [dashboardLoadError, setDashboardLoadError] = useState<string | null>(null);
   const [integrationActionLoading, setIntegrationActionLoading] = useState<string | null>(null);
-  const [cmsProvider, setCmsProvider] = useState<'shopify' | 'webflow'>('shopify');
-  const [cmsTitle, setCmsTitle] = useState('');
-  const [cmsSlug, setCmsSlug] = useState('');
-  const [cmsBody, setCmsBody] = useState('');
-  const [cmsPublishLoading, setCmsPublishLoading] = useState(false);
+  const [socialActionLoadingId, setSocialActionLoadingId] = useState<string | null>(null);
+  const [editSocialPost, setEditSocialPost] = useState<SocialPost | null>(null);
+  const [editSocialBody, setEditSocialBody] = useState('');
+  const [editSocialSaving, setEditSocialSaving] = useState(false);
+  const [a2aSiteUrl, setA2aSiteUrl] = useState('https://example.com');
+  const [a2aKeywordsInput, setA2aKeywordsInput] = useState('ai marketing automation, seo platform');
+  const [a2aLaunchLoading, setA2aLaunchLoading] = useState(false);
+  const [a2aSessionId, setA2aSessionId] = useState('');
+  const [a2aSessionStatus, setA2aSessionStatus] = useState<A2ASessionStatus | null>(null);
+  const [a2aSteps, setA2aSteps] = useState<A2AStep[]>([]);
+  const [a2aMessages, setA2aMessages] = useState<A2AMessage[]>([]);
+  const [a2aError, setA2aError] = useState<string | null>(null);
+  const [campaignHistory, setCampaignHistory] = useState<CampaignHistoryEntry[]>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('virilocity_campaign_history') : null;
+      return raw ? (JSON.parse(raw) as CampaignHistoryEntry[]) : [];
+    } catch { return []; }
+  });
   
   // Agent filter state
   const [agentFilterStatus, setAgentFilterStatus] = useState<'all' | 'running' | 'idle' | 'hitl'>('all');
@@ -807,8 +770,16 @@ export default function DashboardClient() {
   const isAnalyticsConversionsLoading = dashboardLoadState === 'loading';
   const isAnalyticsAbTestsLoading = dashboardLoadState === 'loading';
 
+  const integrationRows: IntegrationItem[] = integrations.filter(item => item.name !== 'WordPress CMS');
+  const connectedIntegrations = integrationRows.filter(item => item.statusText.toLowerCase().startsWith('connected')).length;
+  const hubspotConnected = integrations.some(
+    item => item.name === 'HubSpot CRM' && item.statusText.toLowerCase().startsWith('connected'),
+  );
+  const isLightTheme = theme === 'light';
+
   const integrationActionConfig: Record<string, { label: string; href?: string; enabled: boolean }> = {
     'HubSpot CRM': { label: 'Sync HubSpot', href: '/api/hubspot/auth', enabled: true },
+    'LinkedIn': { label: 'Connect LinkedIn', href: '/api/linkedin/auth', enabled: true },
     'Microsoft 365': { label: 'Connect M365', enabled: false },
     'Anthropic Claude API': { label: 'Connect Claude', enabled: false },
     'Azure Key Vault': { label: 'Connect Vault', enabled: false },
@@ -823,6 +794,10 @@ export default function DashboardClient() {
 
     if (name === 'HubSpot CRM' && statusText.toLowerCase().startsWith('connected')) {
       return { label: 'Disconnect', enabled: true, href: '/api/hubspot/disconnect' };
+    }
+
+    if (name === 'LinkedIn' && statusText.toLowerCase().startsWith('connected')) {
+      return { label: 'Disconnect', enabled: true, href: '/api/linkedin/disconnect' };
     }
 
     return { label: cfg.label, enabled: cfg.enabled, href: cfg.href };
@@ -973,6 +948,12 @@ export default function DashboardClient() {
       if (Array.isArray(data.analytics.abTests)) {
         setAbTests(data.analytics.abTests);
       }
+      if (data.analytics.trafficKpis && typeof data.analytics.trafficKpis === 'object') {
+        setTrafficKpis(data.analytics.trafficKpis as TrafficKpis);
+      }
+      if (data.analytics.conversionKpis && typeof data.analytics.conversionKpis === 'object') {
+        setConversionKpis(data.analytics.conversionKpis as ConversionKpis);
+      }
     }
 
     if (data.contacts && typeof data.contacts === 'object') {
@@ -992,6 +973,14 @@ export default function DashboardClient() {
           activeSegments: isNumber(data.contacts?.summary.activeSegments) ? data.contacts.summary.activeSegments : prev.activeSegments,
         }));
       }
+    }
+
+    if (Array.isArray(data.socialPosts)) {
+      setSocialPosts(data.socialPosts);
+    }
+
+    if (Array.isArray(data.blogArticles)) {
+      setBlogArticles(data.blogArticles.slice(0, 50));
     }
 
     if (data.settings && typeof data.settings === 'object') {
@@ -1041,8 +1030,9 @@ export default function DashboardClient() {
   useEffect(() => {
     void refreshDashboardData(false);
     const poll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
       void refreshDashboardData(true);
-    }, 5000);
+    }, 15000);
 
     return () => window.clearInterval(poll);
   }, []);
@@ -1050,9 +1040,21 @@ export default function DashboardClient() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const hubspot = params.get('hubspot');
+    const linkedin = params.get('linkedin');
     const reason = params.get('reason');
+    const tab = params.get('tab');
+    const lever = params.get('lever');
 
-    if (!hubspot) return;
+    const hasOauthStatus = Boolean(hubspot || linkedin);
+    const hasNavigationHint = Boolean(tab || lever);
+    if (!hasOauthStatus && !hasNavigationHint) return;
+
+    if (tab === 'settings') {
+      setActiveTab('settings');
+      if (lever === 'billing' || lever === 'team' || lever === 'integrations' || lever === 'cms' || lever === 'security') {
+        setActiveSettingsLever(lever);
+      }
+    }
 
     if (hubspot === 'connected') {
       toast.success('HubSpot connected successfully.');
@@ -1063,18 +1065,118 @@ export default function DashboardClient() {
       toast.error(`HubSpot error: ${decodedReason}`);
     }
 
+    if (linkedin === 'connected') {
+      toast.success('LinkedIn connected successfully.');
+    } else if (linkedin === 'disconnected') {
+      toast.info('LinkedIn disconnected successfully.');
+    } else if (linkedin === 'error') {
+      const decodedReason = reason ? decodeURIComponent(reason) : 'Unknown error';
+      toast.error(`LinkedIn error: ${decodedReason}`);
+    }
+
     params.delete('hubspot');
+    params.delete('linkedin');
     params.delete('reason');
+    params.delete('tab');
+    params.delete('lever');
     const next = params.toString();
     const cleanedUrl = `${window.location.pathname}${next ? `?${next}` : ''}`;
     window.history.replaceState({}, '', cleanedUrl);
   }, [toast]);
 
-  const postAction = async (action: string, id?: string) => {
+  const openSocialEdit = (post: SocialPost) => {
+    setEditSocialPost(post);
+    setEditSocialBody(post.body.join('\n\n'));
+  };
+
+  const closeSocialEdit = () => {
+    setEditSocialPost(null);
+    setEditSocialBody('');
+  };
+
+  const handleEditSocialSave = async () => {
+    if (!editSocialPost) return;
+    const trimmed = editSocialBody.trim();
+    if (!trimmed) {
+      toast.error('Post content cannot be empty.');
+      return;
+    }
+
+    setEditSocialSaving(true);
+    try {
+      const paragraphs = trimmed.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+      const result = await postAction('editSocialPost', undefined, {
+        postId: editSocialPost.id,
+        postContent: paragraphs,
+      });
+      if (result.data) applyDashboardData(result.data);
+      toast.success('Post updated.');
+      closeSocialEdit();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save post.');
+    } finally {
+      setEditSocialSaving(false);
+    }
+  };
+
+  const handleSocialPrimaryAction = async (post: SocialPost) => {
+    if (post.status === 'posted') {
+      toast.info('This post has already been published.');
+      return;
+    }
+
+    // Platform not connected — guide user to Settings
+    if (post.primaryAction === 'Connect Platform') {
+      setActiveTab('settings');
+      setActiveSettingsLever('integrations');
+      toast.info(`Connect ${post.channel} in Settings → Integrations, then return here to publish.`);
+      return;
+    }
+
+    const ch = post.channel.toLowerCase();
+
+    if (ch !== 'linkedin' && ch !== 'reddit') {
+      toast.info(`${post.primaryAction} action will be enabled in the next step.`);
+      return;
+    }
+
+    setSocialActionLoadingId(post.id);
+
+    try {
+      const postBody = post.body.join('\n\n').trim();
+      const result = await postAction('publishSocialPost', undefined, {
+        postId: post.id,
+        postChannel: ch,
+        postBody,
+      });
+
+      if (result.data) {
+        applyDashboardData(result.data);
+      }
+
+      if (ch === 'reddit') {
+        toast.success('Posted to Reddit successfully.');
+      } else {
+        toast.success('LinkedIn post published successfully.');
+      }
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : 'Publish failed';
+      // If Reddit not connected, guide user to Settings
+      if (errMsg.includes('not connected')) {
+        toast.error('Reddit not connected. Go to Settings → Integrations to connect.');
+      } else {
+        toast.error(errMsg);
+      }
+    } finally {
+      setSocialActionLoadingId(null);
+    }
+  };
+
+  const postAction = async (action: string, id?: string, extra?: Record<string, unknown>) => {
     const res = await fetch('/dashboard/data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, id }),
+      body: JSON.stringify({ action, id, ...extra }),
     });
 
     if (!res.ok) {
@@ -1088,49 +1190,185 @@ export default function DashboardClient() {
     };
   };
 
-  const handleCmsPublish = async () => {
-    if (!cmsTitle.trim() || !cmsSlug.trim() || !cmsBody.trim()) {
-      toast.error('Title, slug, and content are required for CMS publish.');
+  const fetchA2ASession = async (sessionId: string) => {
+    const res = await fetch(`/api/a2a/session?sessionId=${encodeURIComponent(sessionId)}`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(err?.error ?? 'Failed to load A2A session');
+    }
+
+    const body = (await res.json()) as { ok?: boolean; session?: A2ASession };
+    if (!body.ok || !body.session) {
+      throw new Error('Invalid A2A session response');
+    }
+
+    setA2aSessionStatus(body.session.status);
+    setA2aSteps(body.session.steps ?? []);
+    setA2aMessages(body.session.messages ?? []);
+    return body.session;
+  };
+
+  const handleLaunchDeepSeoCampaign = async () => {
+    const normalizedKeywords = a2aKeywordsInput
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    if (normalizedKeywords.length === 0) {
+      toast.error('Please enter at least one target keyword.');
       return;
     }
 
-    setCmsPublishLoading(true);
+    setA2aLaunchLoading(true);
+    setA2aError(null);
+
     try {
-      const res = await fetch('/dashboard/data', {
+      const idem = `deep-seo-${a2aSiteUrl.trim().toLowerCase()}-${normalizedKeywords.join('|').toLowerCase()}`.slice(0, 120);
+      const res = await fetch('/api/seo/campaign', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-idempotency-key': idem,
+        },
         body: JSON.stringify({
-          action: 'publishCms',
-          provider: cmsProvider,
-          title: cmsTitle.trim(),
-          slug: cmsSlug.trim(),
-          htmlBody: cmsBody.trim(),
-          status: 'published',
+          siteUrl: a2aSiteUrl.trim(),
+          targetKeywords: normalizedKeywords,
         }),
       });
 
-      const payload = (await res.json().catch(() => null)) as {
-        cms?: { provider?: string; itemId?: string };
-        data?: DashboardApiResponse;
-        error?: { provider?: string; code?: string; message?: string } | string;
-      } | null;
-
       if (!res.ok) {
-        const msg = typeof payload?.error === 'string'
-          ? payload.error
-          : payload?.error?.message ?? 'CMS publish failed';
-        throw new Error(msg);
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? 'Failed to start deep SEO campaign');
       }
 
-      if (payload?.data) applyDashboardData(payload.data);
-      toast.success(`${cmsProvider} publish succeeded${payload?.cms?.itemId ? ` (id: ${payload.cms.itemId})` : ''}.`);
+      const body = (await res.json()) as {
+        ok?: boolean;
+        sessionId?: string;
+        status?: A2ASessionStatus;
+        reused?: boolean;
+      };
+
+      if (!body.ok || !body.sessionId) {
+        throw new Error('Invalid campaign launch response');
+      }
+
+      setA2aSessionId(body.sessionId);
+      setA2aSessionStatus(body.status ?? 'active');
+      await fetchA2ASession(body.sessionId);
+
+      // Persist to campaign history
+      const histEntry: CampaignHistoryEntry = {
+        sessionId: body.sessionId,
+        siteUrl: a2aSiteUrl.trim(),
+        keywords: a2aKeywordsInput,
+        status: body.status ?? 'active',
+        launchedAt: new Date().toISOString(),
+      };
+      setCampaignHistory(prev => {
+        const next = [histEntry, ...prev.filter(e => e.sessionId !== body.sessionId)].slice(0, 10);
+        try { localStorage.setItem('virilocity_campaign_history', JSON.stringify(next)); } catch { /* ignore */ }
+        return next;
+      });
+
+      if (body.reused) {
+        toast.success('Deep SEO session reused from idempotency key.');
+      } else {
+        toast.success('Deep SEO campaign started. Monitoring live progress...');
+      }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'CMS publish failed';
+      const msg = error instanceof Error ? error.message : 'Failed to start deep SEO campaign';
+      setA2aError(msg);
       toast.error(msg);
     } finally {
-      setCmsPublishLoading(false);
+      setA2aLaunchLoading(false);
     }
   };
+
+  const handleLoadCampaignSession = async (entry: CampaignHistoryEntry) => {
+    setA2aSiteUrl(entry.siteUrl);
+    setA2aKeywordsInput(entry.keywords);
+    setA2aSessionId(entry.sessionId);
+    setA2aSessionStatus(entry.status);
+    setA2aError(null);
+    try {
+      await fetchA2ASession(entry.sessionId);
+    } catch (e) {
+      setA2aError(e instanceof Error ? e.message : 'Failed to load session');
+    }
+  };
+
+  const updateHistoryStatus = (sessionId: string, status: A2ASessionStatus) => {
+    setCampaignHistory(prev => {
+      const next = prev.map(e => e.sessionId === sessionId ? { ...e, status } : e);
+      try { localStorage.setItem('virilocity_campaign_history', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  const handleClearCampaignHistory = () => {
+    setCampaignHistory([]);
+    try {
+      localStorage.removeItem('virilocity_campaign_history');
+    } catch {
+      // Ignore storage failures and keep in-memory clear.
+    }
+    toast.success('Campaign history cleared.');
+  };
+
+  useEffect(() => {
+    if (!a2aSessionId) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pollCount = 0;
+    const maxPolls = 120; // 6 minutes at 3s intervals
+
+    const stopPolling = () => {
+      cancelled = true;
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const poll = async () => {
+      if (cancelled) return;
+      pollCount += 1;
+      if (pollCount > maxPolls) {
+        stopPolling();
+        toast.info('Campaign monitoring paused after 6 minutes. Use Refresh or relaunch to check latest status.');
+        return;
+      }
+
+      try {
+        const session = await fetchA2ASession(a2aSessionId);
+        if (cancelled) return;
+
+        if (session.status === 'completed') {
+          stopPolling();
+          updateHistoryStatus(a2aSessionId, 'completed');
+          toast.success('Deep SEO campaign completed.');
+        } else if (session.status === 'failed') {
+          stopPolling();
+          updateHistoryStatus(a2aSessionId, 'failed');
+          toast.error('Deep SEO campaign failed. Review step errors.');
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setA2aError(error instanceof Error ? error.message : 'Session polling failed');
+      }
+    };
+
+    void poll();
+    timer = window.setInterval(() => { void poll(); }, 3000) as unknown as ReturnType<typeof setTimeout>;
+
+    return stopPolling;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [a2aSessionId]);
 
   const handleRunAutopilot = async () => {
     try {
@@ -1175,23 +1413,73 @@ export default function DashboardClient() {
 
   const handleHitlAction = async (id: string, action: 'approveHitl' | 'rejectHitl') => {
     try {
-      if (action === 'approveHitl') {
-        // Call Reddit approve endpoint first — HITL invariant: human explicitly approved
-        const item = hitlQueueItems.find(i => i.id === id);
-        const redditRes = await fetch('/api/reddit/approve', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ threadId: id, draftResponse: item?.content ?? '' }),
-        });
-        if (!redditRes.ok) {
-          const err = (await redditRes.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(err?.error ?? 'Reddit approve call failed');
-        }
-      }
+      const target = hitlQueueItems.find(item => item.id === id);
       const result = await postAction(action, id);
       if (result.data) applyDashboardData(result.data);
+
+      // Optimistic UI bridge: show approved HITL content immediately in Content sections.
+      if (action === 'approveHitl' && target) {
+        const safeTitle = (target.title ?? '').trim() || 'Untitled draft';
+        const safeContent = (target.content ?? '').trim();
+        const safeSubreddit = (target.subreddit ?? '').trim() || 'r/marketing';
+
+        const optimisticSocial: SocialPost[] = [
+          {
+            id: `reddit_${id}`,
+            channel: 'REDDIT',
+            handle: 'reddit_manager',
+            generatedAgo: `Approved just now · Approved · ${safeSubreddit}`,
+            bias: null,
+            model: 'Haiku',
+            body: [safeTitle, safeContent],
+            primaryAction: 'Post to Reddit',
+            secondaryAction: 'Edit',
+            status: 'draft',
+          },
+          {
+            id: `linkedin_${id}`,
+            channel: 'LINKEDIN',
+            handle: 'linkedin_poster',
+            generatedAgo: `Approved just now · Approved · ${safeSubreddit} (cross-post)`,
+            bias: null,
+            model: 'Haiku',
+            body: [safeTitle, safeContent],
+            primaryAction: 'Post Now',
+            secondaryAction: 'Edit',
+            status: 'draft',
+          },
+        ];
+
+        setSocialPosts(prev => {
+          const ids = new Set(prev.map(p => p.id));
+          const merged = [...optimisticSocial.filter(p => !ids.has(p.id)), ...prev];
+          return merged.slice(0, 10);
+        });
+
+        const wordCount = safeContent.length > 0 ? safeContent.split(/\s+/).length : 0;
+        const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const optimisticArticle: BlogArticle = {
+          id: `blog_hitl_${id}`,
+          title: safeTitle,
+          words: wordCount.toLocaleString(),
+          bias: '—',
+          published: today,
+          visits: null,
+          source: 'hitl',
+          action: 'Preview',
+        };
+
+        setBlogArticles(prev => {
+          if (prev.some(a => a.id === optimisticArticle.id)) return prev;
+          return [optimisticArticle, ...prev].slice(0, 50);
+        });
+      }
+
+      // Ensure UI catches up even if POST response came from stale cache shape.
+      void refreshDashboardData(true);
+
       toast.success(action === 'approveHitl'
-        ? 'Approved. Post queued for manual Reddit submission.'
+        ? 'Approved & saved. Draft awaiting manual Reddit posting.'
         : 'Item rejected and removed from queue.');
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to process HITL action';
@@ -1313,6 +1601,51 @@ export default function DashboardClient() {
       toast.error(msg);
     } finally {
       setKbUploadLoading(false);
+    }
+  };
+
+  const handleViewKbDoc = async (docId: string) => {
+    setViewKbDocLoading(true);
+    try {
+      const res = await fetch('/dashboard/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'viewKbDoc', docId }),
+      });
+      if (!res.ok) throw new Error('Failed to load document');
+      const result = (await res.json()) as { ok: boolean; document?: { id: string; name: string; category: string; content: string } };
+      if (result.document) setViewKbDocState(result.document);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to load document';
+      toast.error(msg);
+    } finally {
+      setViewKbDocLoading(false);
+    }
+  };
+
+  const handleRetrainKbDoc = async (docId: string, docTitle: string) => {
+    setRetrainLoadingDocId(docId);
+    try {
+      const res = await fetch('/dashboard/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'retrainKbDoc', docId }),
+      });
+      if (!res.ok) throw new Error('Re-train failed');
+      const json = (await res.json()) as { wordCount?: number };
+      const words = json.wordCount ? ` · ${json.wordCount.toLocaleString()} words` : '';
+      toast.success(`"${docTitle}" improved & saved${words}`);
+      // Refresh KB list to show updated word count
+      const refreshRes = await fetch('/dashboard/data', { method: 'GET' });
+      if (refreshRes.ok) {
+        const refreshed = (await refreshRes.json()) as DashboardApiResponse;
+        if (refreshed.kbDocuments) setKbDocuments(refreshed.kbDocuments);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Re-train failed';
+      toast.error(msg);
+    } finally {
+      setRetrainLoadingDocId(null);
     }
   };
 
@@ -1438,6 +1771,16 @@ export default function DashboardClient() {
                   active={activeAgentsLever === 'scheduled'}
                   onClick={() => setActiveAgentsLever('scheduled')}
                 />
+                <Lever
+                  label="Campaigns"
+                  active={activeAgentsLever === 'campaigns'}
+                  onClick={() => setActiveAgentsLever('campaigns')}
+                />
+                <Lever
+                  label="Campaign History"
+                  active={activeAgentsLever === 'campaign-history'}
+                  onClick={() => setActiveAgentsLever('campaign-history')}
+                />
               </div>
             </div>
           )}
@@ -1514,6 +1857,7 @@ export default function DashboardClient() {
                 <Lever label="Billing"      active={activeSettingsLever === 'billing'}      onClick={() => setActiveSettingsLever('billing')} />
                 <Lever label="Team"         active={activeSettingsLever === 'team'}         onClick={() => setActiveSettingsLever('team')} />
                 <Lever label="Integrations" active={activeSettingsLever === 'integrations'} onClick={() => setActiveSettingsLever('integrations')} />
+                <Lever label="CMS"          active={activeSettingsLever === 'cms'}          onClick={() => setActiveSettingsLever('cms')} />
                 <Lever label="Security"     active={activeSettingsLever === 'security'}     onClick={() => setActiveSettingsLever('security')} />
               </div>
             </div>
@@ -1522,12 +1866,23 @@ export default function DashboardClient() {
           {/* Content Area */}
           <div className="min-h-[560px] px-5 py-[22px] bg-gradient-to-b from-[rgba(0,8,20,0.58)] to-[rgba(0,4,12,0.4)]">
             {dashboardLoadState === 'loading' && (
-              <GlassCard className="mb-4 px-4 py-3 border-[rgba(14,124,123,0.28)] bg-[rgba(14,124,123,0.08)]">
-                <div className="font-mono text-[10px] text-[rgba(14,200,198,0.82)] uppercase tracking-[2px]">
-                  Loading section data...
+              <div className="mb-4 space-y-3" aria-label="Loading dashboard sections">
+                <Skeleton className="h-10 rounded-xl" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  <Skeleton className="h-24 rounded-2xl" />
+                  <Skeleton className="h-24 rounded-2xl" />
+                  <Skeleton className="h-24 rounded-2xl" />
+                  <Skeleton className="h-24 rounded-2xl" />
                 </div>
-              </GlassCard>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
+                  <Skeleton className="lg:col-span-2 h-52 rounded-2xl" />
+                  <Skeleton className="h-52 rounded-2xl" />
+                </div>
+                <Skeleton className="h-48 rounded-2xl" />
+              </div>
             )}
+
+            <div className={dashboardLoadState === 'loading' ? 'opacity-0 pointer-events-none select-none h-0 overflow-hidden' : ''}>
 
             {dashboardLoadState === 'error' && (
               <GlassCard className="mb-4 px-4 py-3 border-[rgba(210,85,85,0.35)] bg-[rgba(95,20,20,0.2)]">
@@ -1758,7 +2113,7 @@ export default function DashboardClient() {
                           {countdownText}
                         </div>
                         <div className="font-mono text-[11px] text-[rgba(255,255,255,0.45)] mb-6 leading-relaxed">
-                          Every 6 hrs · CRON: 0 */6 * * * · NEXT: {nextRunUtcLabel} UTC
+                          Every 24 hrs · CRON: 0 6 * * * · NEXT: {nextRunUtcLabel} UTC
                         </div>
                         <div className="flex justify-center gap-3">
                           <button
@@ -1814,6 +2169,7 @@ export default function DashboardClient() {
                         </div>
                       </div>
                     </GlassCard>
+
                   </div>
 
                   {/* Right: Task Schedule */}
@@ -2254,11 +2610,13 @@ export default function DashboardClient() {
               <div>
                 {/* Section Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Currently Running
                   </div>
                   <div className="flex gap-2.5">
-                    <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors">
+                    <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors"
+                      style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                       {runningAgents.length} Active
                     </button>
                   </div>
@@ -2267,11 +2625,14 @@ export default function DashboardClient() {
                 {/* Empty State or Running Agents List */}
                 {runningAgents.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 px-8">
-                    <div className="text-5xl mb-4">⏸</div>
-                    <div className="font-mono text-[13px] font-semibold text-[rgba(255,255,255,0.48)] text-center mb-2">
+                    <div className="text-5xl mb-4"
+                      style={isLightTheme ? { filter: 'grayscale(1) brightness(0.4)' } : undefined}>⏸</div>
+                    <div className="font-mono text-[13px] font-semibold text-[rgba(255,255,255,0.48)] text-center mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                       No Agents Running
                     </div>
-                    <div className="font-mono text-[11px] text-[rgba(255,255,255,0.34)] text-center max-w-md">
+                    <div className="font-mono text-[11px] text-[rgba(255,255,255,0.34)] text-center max-w-md"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                       Autopilot is idle. Click "Run Autopilot" in the Autopilot tab to start the 11-task orchestration pipeline.
                     </div>
                   </div>
@@ -2280,7 +2641,8 @@ export default function DashboardClient() {
                     {/* Running Agents List */}
                     <div className="space-y-3 mb-6">
                       {runningAgents.map((agent) => (
-                    <GlassCard key={agent.id} className="px-5 py-4 border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]">
+                    <GlassCard key={agent.id} className="px-5 py-4 border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]"
+                      style={isLightTheme ? { background: 'rgba(185,156,190,0.08)', borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
                       <div className="flex items-center gap-5">
                         {/* Circular Progress Indicator */}
                         <div className="relative flex-shrink-0">
@@ -2321,17 +2683,20 @@ export default function DashboardClient() {
 
                         {/* Agent Info */}
                         <div className="flex-1 min-w-0">
-                          <div className="font-[Rajdhani] text-[15px] font-bold text-[rgba(255,255,255,0.92)] mb-1.5 leading-tight">
+                          <div className="font-[Rajdhani] text-[15px] font-bold text-[rgba(255,255,255,0.92)] mb-1.5 leading-tight"
+                            style={isLightTheme ? { color: '#6B4F72' } : undefined}>
                             {agent.name}
                           </div>
-                          <div className="font-mono text-[10px] leading-relaxed text-[rgba(255,255,255,0.48)] pr-4">
+                          <div className="font-mono text-[10px] leading-relaxed text-[rgba(255,255,255,0.48)] pr-4"
+                            style={isLightTheme ? { color: '#A483AE' } : undefined}>
                             {agent.taskDescription}
                           </div>
                         </div>
 
                         {/* Running Time Button */}
                         <div className="flex-shrink-0">
-                          <button className="rounded-full border border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.14)] px-4 py-2 font-mono text-[9px] font-medium text-[rgba(14,200,198,0.94)] shadow-[0_0_14px_rgba(14,124,123,0.16),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(14,124,123,0.2)] transition-colors whitespace-nowrap">
+                          <button className="rounded-full border border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.14)] px-4 py-2 font-mono text-[9px] font-medium text-[rgba(14,200,198,0.94)] shadow-[0_0_14px_rgba(14,124,123,0.16),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(14,124,123,0.2)] transition-colors whitespace-nowrap"
+                            style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                             RUNNING - {agent.runningTime}
                           </button>
                         </div>
@@ -2341,17 +2706,28 @@ export default function DashboardClient() {
                 </div>
 
                 {/* Bottom Stats Bar */}
-                <div className="mt-6 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
-                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
-                    <span className="text-[rgba(14,200,198,0.75)]">◉ {runningAgents.length}</span> agents running
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">{testsPassedLabel}</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">TEVV {tevvScore.toFixed(1)} /100</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">BIAS gate &gt;70</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,210,100,0.85)]">▲ {hitlQueueItems.length}</span> HITL pending
+                <div className="mt-6 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]"
+                  style={isLightTheme ? { background: 'rgba(185,156,190,0.1)', borderColor: 'rgba(164,131,174,0.18)' } : undefined}>
+                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide"
+                    style={isLightTheme ? { color: '#B99CBE' } : undefined}>
+                    <span className="text-[rgba(14,200,198,0.75)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>◉ {runningAgents.length}</span> agents running
+                    <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                      style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                    <span className="text-[rgba(14,200,198,0.75)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>{testsPassedLabel}</span>
+                    <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                      style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                    <span className="text-[rgba(14,200,198,0.75)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>TEVV {tevvScore.toFixed(1)} /100</span>
+                    <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                      style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                    <span className="text-[rgba(14,200,198,0.75)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>BIAS gate &gt;70</span>
+                    <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                      style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                    <span className="text-[rgba(255,210,100,0.85)]"
+                      style={isLightTheme ? { color: '#9A6FA8' } : undefined}>▲ {hitlQueueItems.length}</span> HITL pending
                   </div>
                 </div>
                   </>
@@ -2364,18 +2740,35 @@ export default function DashboardClient() {
               <div>
                 {/* Section Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase">
+                  <div className={`font-mono text-[9px] tracking-[3px] uppercase ${
+                    isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.34)]'
+                  }`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                     Scheduled Runs
                   </div>
                   <div className="flex gap-2.5">
-                    <button className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)] transition-colors">
+                    <button
+                      className={[
+                        'rounded-full border px-3 py-1.5 font-mono text-[9px] transition-colors',
+                        isLightTheme
+                          ? 'border-[rgba(185,156,190,0.48)] bg-[rgba(255,255,255,0.78)] text-[#B99CBE] shadow-[0_8px_18px_rgba(142,99,142,0.14)] hover:bg-[rgba(255,255,255,0.9)]'
+                          : 'border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.12)] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)] hover:bg-[rgba(14,124,123,0.18)]',
+                      ].join(' ')}
+                      style={isLightTheme ? { color: '#B99CBE', borderColor: 'rgba(185,156,190,0.48)' } : undefined}
+                    >
                       Next: {nextRunUtcLabel} UTC
                     </button>
                   </div>
                 </div>
 
                 {/* Scheduled Agents Table */}
-                <div className="mb-6 overflow-hidden rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]">
+                <div
+                  className={[
+                    'mb-6 overflow-hidden rounded-lg border',
+                    isLightTheme
+                      ? 'border-[rgba(147,104,149,0.24)] bg-[linear-gradient(165deg,rgba(255,255,255,0.82),rgba(246,236,245,0.9))] shadow-[0_16px_34px_rgba(147,104,149,0.12)]'
+                      : 'border-[rgba(255,255,255,0.08)] bg-[rgba(0,8,20,0.6)]',
+                  ].join(' ')}
+                >
                   <table className="w-full table-fixed">
                     <colgroup>
                       <col className="w-[18%]" />
@@ -2386,52 +2779,60 @@ export default function DashboardClient() {
                       <col className="w-[30%]" />
                     </colgroup>
                     <thead>
-                      <tr className="border-b border-[rgba(255,255,255,0.06)]">
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                      <tr className={isLightTheme ? 'border-b border-[rgba(147,104,149,0.14)]' : 'border-b border-[rgba(255,255,255,0.06)]'}>
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Name
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Schedule
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Next Run
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Model
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Est. Duration
                         </th>
-                        <th className="px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] text-[rgba(255,255,255,0.35)] uppercase">
+                        <th className={`px-5 py-3 text-left font-mono text-[9px] font-medium tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                           Status
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       {scheduledAgents.map((agent) => (
-                        <tr key={agent.id} className="border-b border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                        <tr
+                          key={agent.id}
+                          className={[
+                            'border-b transition-colors',
+                            isLightTheme
+                              ? 'border-[rgba(147,104,149,0.11)] hover:bg-[rgba(255,255,255,0.46)]'
+                              : 'border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)]',
+                          ].join(' ')}
+                        >
                           <td className="px-5 py-3.5">
-                            <div className="font-[Rajdhani] text-[14px] font-semibold text-[rgba(255,255,255,0.88)]">
+                            <div className={`font-[Rajdhani] text-[14px] font-semibold ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(255,255,255,0.88)]'}`} style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {agent.name}
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            <div className="font-mono text-[11px] text-[rgba(255,255,255,0.52)]">
+                            <div className={`font-mono text-[11px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.52)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                               {agent.schedule}
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            <div className="font-mono text-[11px] text-[rgba(14,200,198,0.85)]">
+                            <div className={`font-mono text-[11px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.85)]'}`} style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {agent.nextRun}
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            <div className="font-mono text-[11px] text-[rgba(14,200,198,0.75)]">
+                            <div className={`font-mono text-[11px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'}`} style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {agent.model}
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            <div className="font-mono text-[11px] text-[rgba(255,255,255,0.48)]">
+                            <div className={`font-mono text-[11px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.48)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                               {agent.estDuration}
                             </div>
                           </td>
@@ -2440,17 +2841,28 @@ export default function DashboardClient() {
                               className={[
                                 'rounded-full border px-3 py-1.5 font-mono text-[9px] font-medium transition-colors',
                                 agent.status === 'hitl'
-                                  ? 'border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.14)] text-[rgba(255,210,100,0.92)] shadow-[0_0_14px_rgba(201,168,76,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(201,168,76,0.2)]'
+                                  ? isLightTheme
+                                    ? 'border-[rgba(196,160,74,0.42)] bg-[rgba(255,246,214,0.9)] text-[#A483AE] shadow-[0_6px_16px_rgba(190,154,66,0.16)] hover:bg-[rgba(255,241,195,0.95)]'
+                                    : 'border-[rgba(201,168,76,0.35)] bg-[rgba(201,168,76,0.14)] text-[rgba(255,210,100,0.92)] shadow-[0_0_14px_rgba(201,168,76,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(201,168,76,0.2)]'
                                   : agent.status === 'running'
-                                    ? 'border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.16)] text-[rgba(14,200,198,0.95)] shadow-[0_0_14px_rgba(14,124,123,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(14,124,123,0.22)]'
+                                    ? isLightTheme
+                                      ? 'border-[rgba(185,156,190,0.5)] bg-[rgba(248,233,245,0.92)] text-[#A483AE] shadow-[0_6px_16px_rgba(147,104,149,0.14)] hover:bg-[rgba(244,221,239,0.96)]'
+                                      : 'border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.16)] text-[rgba(14,200,198,0.95)] shadow-[0_0_14px_rgba(14,124,123,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(14,124,123,0.22)]'
                                     : agent.status === 'success'
-                                      ? 'border-[rgba(30,165,80,0.38)] bg-[rgba(30,120,60,0.16)] text-[rgba(120,255,170,0.92)] shadow-[0_0_14px_rgba(30,120,60,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(30,120,60,0.22)]'
+                                      ? isLightTheme
+                                        ? 'border-[rgba(185,156,190,0.46)] bg-[rgba(241,232,245,0.9)] text-[#A483AE] shadow-[0_6px_16px_rgba(135,98,141,0.14)] hover:bg-[rgba(235,224,241,0.96)]'
+                                        : 'border-[rgba(30,165,80,0.38)] bg-[rgba(30,120,60,0.16)] text-[rgba(120,255,170,0.92)] shadow-[0_0_14px_rgba(30,120,60,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(30,120,60,0.22)]'
                                       : agent.status === 'failed'
                                         ? 'border-[rgba(255,90,90,0.35)] bg-[rgba(170,40,40,0.16)] text-[rgba(255,160,160,0.92)] shadow-[0_0_14px_rgba(170,40,40,0.15),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(170,40,40,0.22)]'
                                         : agent.status === 'skipped'
-                                          ? 'border-[rgba(160,160,170,0.35)] bg-[rgba(90,90,110,0.18)] text-[rgba(220,220,230,0.88)] shadow-[0_0_14px_rgba(90,90,110,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(90,90,110,0.24)]'
-                                          : 'border-[rgba(100,50,180,0.35)] bg-[rgba(100,50,180,0.14)] text-[rgba(180,140,255,0.92)] shadow-[0_0_14px_rgba(100,50,180,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(100,50,180,0.2)]',
+                                          ? isLightTheme
+                                            ? 'border-[rgba(185,156,190,0.38)] bg-[rgba(244,240,248,0.9)] text-[#B99CBE] shadow-[0_6px_14px_rgba(124,108,140,0.12)] hover:bg-[rgba(238,232,245,0.95)]'
+                                            : 'border-[rgba(160,160,170,0.35)] bg-[rgba(90,90,110,0.18)] text-[rgba(220,220,230,0.88)] shadow-[0_0_14px_rgba(90,90,110,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(90,90,110,0.24)]'
+                                          : isLightTheme
+                                            ? 'border-[rgba(185,156,190,0.48)] bg-[rgba(246,233,244,0.92)] text-[#A483AE] shadow-[0_6px_16px_rgba(147,104,149,0.14)] hover:bg-[rgba(240,222,236,0.95)]'
+                                            : 'border-[rgba(100,50,180,0.35)] bg-[rgba(100,50,180,0.14)] text-[rgba(180,140,255,0.92)] shadow-[0_0_14px_rgba(100,50,180,0.12),inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[rgba(100,50,180,0.2)]',
                               ].join(' ')}
+                              style={isLightTheme ? { color: '#8F6B97' } : undefined}
                             >
                               {agent.status === 'hitl'
                                 ? 'HITL Gate'
@@ -2472,19 +2884,603 @@ export default function DashboardClient() {
                 </div>
 
                 {/* Bottom Stats Bar */}
-                <div className="mt-6 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
-                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
-                    <span className="text-[rgba(14,200,198,0.75)]">◉ {runningAgents.length}</span> agents running
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">{testsPassedLabel}</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">TEVV {tevvScore.toFixed(1)} /100</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(14,200,198,0.75)]">BIAS gate &gt;70</span>
-                    <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                    <span className="text-[rgba(255,210,100,0.85)]">▲ {hitlQueueItems.length}</span> HITL pending
+                <div
+                  className={[
+                    'mt-6 px-4 py-3 rounded-lg border',
+                    isLightTheme
+                      ? 'bg-[rgba(255,255,255,0.65)] border-[rgba(147,104,149,0.2)] shadow-[0_10px_22px_rgba(147,104,149,0.1)]'
+                      : 'bg-[rgba(0,0,0,0.3)] border-[rgba(255,255,255,0.06)]',
+                  ].join(' ')}
+                >
+                  <div className={`font-mono text-[9px] tracking-wide ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.35)]'}`} style={isLightTheme ? { color: '#B99CBE' } : undefined}>
+                    <span className={isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'} style={isLightTheme ? { color: '#8F6B97' } : undefined}>◉ {runningAgents.length}</span> agents running
+                    <span className={`mx-2 ${isLightTheme ? 'text-[rgba(120,90,132,0.3)]' : 'text-[rgba(255,255,255,0.15)]'}`}>|</span>
+                    <span className={isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'} style={isLightTheme ? { color: '#8F6B97' } : undefined}>{testsPassedLabel}</span>
+                    <span className={`mx-2 ${isLightTheme ? 'text-[rgba(120,90,132,0.3)]' : 'text-[rgba(255,255,255,0.15)]'}`}>|</span>
+                    <span className={isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'} style={isLightTheme ? { color: '#8F6B97' } : undefined}>TEVV {tevvScore.toFixed(1)} /100</span>
+                    <span className={`mx-2 ${isLightTheme ? 'text-[rgba(120,90,132,0.3)]' : 'text-[rgba(255,255,255,0.15)]'}`}>|</span>
+                    <span className={isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'} style={isLightTheme ? { color: '#8F6B97' } : undefined}>BIAS gate &gt;70</span>
+                    <span className={`mx-2 ${isLightTheme ? 'text-[rgba(120,90,132,0.3)]' : 'text-[rgba(255,255,255,0.15)]'}`}>|</span>
+                    <span className={isLightTheme ? 'text-[rgba(168,131,43,0.88)]' : 'text-[rgba(255,210,100,0.85)]'}>▲ {hitlQueueItems.length}</span> HITL pending
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'agents' && activeAgentsLever === 'campaigns' && (
+              <div className="space-y-6">
+                <GlassCard variant="teal" className="p-6">
+                  <div className="mb-5">
+                    <div
+                      className={`font-mono text-[10px] tracking-[3px] uppercase mb-1 ${isLightTheme ? 'text-[#9A6FA8]' : 'text-[rgba(14,200,198,0.72)]'}`}
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}
+                    >
+                      Campaign Studio
+                    </div>
+                    <div className={`text-[20px] leading-tight font-semibold mb-2 ${isLightTheme ? 'text-[#6B4F72]' : 'text-[rgba(232,244,255,0.92)]'}`}>
+                      Deep SEO Campaign
+                    </div>
+                    <div
+                      className={`text-[13px] leading-relaxed ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(200,225,245,0.58)]'}`}
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}
+                    >
+                      Run a 5-agent SEO chain: keyword research → content generation → audit → backlinks → knowledge base.
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {['Keyword Researcher', 'Geo Content Generator', 'SEO Auditor', 'Backlink Outreach', 'KB Curator'].map(agent => (
+                        <span
+                          key={agent}
+                          className={`rounded-full border px-2.5 py-1 font-mono text-[8px] tracking-[1px] uppercase ${isLightTheme ? 'border-[rgba(164,131,174,0.32)] bg-[rgba(255,255,255,0.55)] text-[#8F6B97]' : 'border-[rgba(14,200,198,0.26)] bg-[rgba(14,124,123,0.12)] text-[rgba(170,230,228,0.88)]'}`}
+                        >
+                          {agent}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <label className="block">
+                      <div className={`font-mono text-[9px] uppercase mb-1.5 tracking-[2px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(255,255,255,0.45)]'}`} style={isLightTheme ? { color: '#A483AE' } : undefined}>Site URL</div>
+                      <input
+                        value={a2aSiteUrl}
+                        onChange={event => setA2aSiteUrl(event.target.value)}
+                        placeholder="https://example.com"
+                        className={[
+                          'w-full rounded-lg border px-3 py-2 font-mono text-[12px] focus:outline-none',
+                          isLightTheme
+                            ? 'a2a-campaign-input border-[rgba(185,156,190,0.3)] bg-[rgba(255,255,255,0.7)] text-[#8F6B97] placeholder:text-[#C7B2CD] focus:border-[rgba(164,131,174,0.68)]'
+                            : 'border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.05)] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:border-[rgba(14,200,198,0.55)]',
+                        ].join(' ')}
+                        style={isLightTheme ? { color: '#8F6B97' } : undefined}
+                      />
+                      <div className={`mt-1 font-mono text-[8px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                        Enter canonical root URL (example: https://example.com)
+                      </div>
+                    </label>
+                    <label className="block">
+                      <div className={`font-mono text-[9px] uppercase mb-1.5 tracking-[2px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(255,255,255,0.45)]'}`} style={isLightTheme ? { color: '#A483AE' } : undefined}>Target Keywords (comma-separated)</div>
+                      <input
+                        value={a2aKeywordsInput}
+                        onChange={event => setA2aKeywordsInput(event.target.value)}
+                        placeholder="ai marketing automation, seo platform"
+                        className={[
+                          'w-full rounded-lg border px-3 py-2 font-mono text-[12px] focus:outline-none',
+                          isLightTheme
+                            ? 'a2a-campaign-input border-[rgba(185,156,190,0.3)] bg-[rgba(255,255,255,0.7)] text-[#8F6B97] placeholder:text-[#C7B2CD] focus:border-[rgba(164,131,174,0.68)]'
+                            : 'border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.05)] text-[rgba(235,247,255,0.92)] placeholder:text-[rgba(180,205,220,0.45)] focus:border-[rgba(14,200,198,0.55)]',
+                        ].join(' ')}
+                        style={isLightTheme ? { color: '#8F6B97' } : undefined}
+                      />
+                      <div className={`mt-1 font-mono text-[8px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                        Use 3-10 intent keywords for best clustering and page mapping.
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <button
+                      onClick={() => { void handleLaunchDeepSeoCampaign(); }}
+                      disabled={a2aLaunchLoading}
+                      className={[
+                        'px-6 py-2.5 rounded-full border font-bold text-[12px] tracking-wide transition-all disabled:opacity-60 disabled:cursor-not-allowed',
+                        isLightTheme
+                          ? 'bg-gradient-to-br from-[rgba(189,137,183,0.88)] to-[rgba(143,107,151,0.92)] border-[rgba(185,156,190,0.65)] text-[rgba(255,245,255,0.98)] shadow-[0_8px_20px_rgba(147,104,149,0.26)] hover:shadow-[0_10px_24px_rgba(147,104,149,0.34)]'
+                          : 'bg-gradient-to-br from-[rgba(14,124,123,0.72)] to-[rgba(0,60,60,0.8)] border-[rgba(14,200,198,0.42)] text-[rgba(14,200,198,1)] shadow-[0_4px_16px_rgba(0,0,0,0.4),0_0_24px_rgba(14,124,123,0.3)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.45),0_0_35px_rgba(14,124,123,0.5)]',
+                      ].join(' ')}
+                      style={
+                        isLightTheme
+                          ? {
+                              color: '#5F3F67',
+                              borderColor: 'rgba(164,131,174,0.62)',
+                              background: 'linear-gradient(135deg, rgba(214,174,208,0.92), rgba(177,136,183,0.92))',
+                            }
+                          : undefined
+                      }
+                    >
+                      {a2aLaunchLoading ? 'Launching…' : '▶ Launch Campaign'}
+                    </button>
+                    <div className={`font-mono text-[9px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                      {a2aSessionId ? (
+                        <>Session: <span className={isLightTheme ? 'text-[#8F6B97]' : 'text-[rgba(14,200,198,0.88)]'}>{a2aSessionId}</span></>
+                      ) : (
+                        <>Tip: use Campaign History toggle to load previous sessions.</>
+                      )}
+                    </div>
+                  </div>
+                </GlassCard>
+
+                <GlassCard className="p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className={`font-mono text-[9px] uppercase tracking-[2px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.75)]'}`}>
+                        Campaign History
+                      </div>
+                      <div className={`font-mono text-[9px] mt-1 ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                        {campaignHistory.length} session{campaignHistory.length === 1 ? '' : 's'} stored locally.
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setActiveAgentsLever('campaign-history')}
+                      className={`rounded-full border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[1.2px] transition-all ${isLightTheme ? 'border-[rgba(164,131,174,0.45)] text-[#8F6B97] bg-[rgba(255,255,255,0.55)] hover:bg-[rgba(244,228,243,0.85)]' : 'border-[rgba(14,200,198,0.35)] text-[rgba(14,200,198,0.82)] bg-[rgba(14,124,123,0.14)] hover:bg-[rgba(14,124,123,0.22)]'}`}
+                    >
+                      Open History
+                    </button>
+                  </div>
+                </GlassCard>
+
+                {a2aError ? (
+                  <GlassCard className="px-5 py-4 border-[rgba(255,90,90,0.3)] bg-[rgba(100,20,20,0.2)]">
+                    <div className="font-mono text-[10px] text-[rgba(255,160,160,0.95)]">{a2aError}</div>
+                  </GlassCard>
+                ) : null}
+
+                {a2aSessionStatus ? (
+                  <GlassCard className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className={`font-mono text-[10px] tracking-[2px] uppercase ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(255,255,255,0.4)]'}`}>Campaign Progress</div>
+                      <div className="font-mono text-[9px] uppercase tracking-[1.5px] px-2.5 py-1 rounded-full border"
+                        style={{
+                          color: a2aSessionStatus === 'completed' ? 'rgba(14,200,198,0.95)' : a2aSessionStatus === 'failed' ? 'rgba(255,120,120,0.9)' : 'rgba(255,210,90,0.95)',
+                          borderColor: a2aSessionStatus === 'completed' ? 'rgba(14,200,198,0.35)' : a2aSessionStatus === 'failed' ? 'rgba(255,90,90,0.35)' : 'rgba(201,168,76,0.45)',
+                          background: a2aSessionStatus === 'completed' ? 'rgba(14,124,123,0.12)' : a2aSessionStatus === 'failed' ? 'rgba(120,30,30,0.2)' : 'rgba(55,38,0,0.18)',
+                        }}
+                      >
+                        {a2aSessionStatus}
+                      </div>
+                    </div>
+
+                    {a2aSteps.length > 0 ? (
+                      <div className="space-y-3 mb-5">
+                        {a2aSteps.map(step => {
+                          const AGENT_LABELS: Record<string, string> = {
+                            keyword_researcher: 'Keyword Researcher',
+                            geo_content_generator: 'Geo Content Generator',
+                            seo_auditor: 'SEO Auditor',
+                            backlink_outreach: 'Backlink Outreach',
+                            knowledge_base_curator: 'Knowledge Base Curator',
+                          };
+                          const AGENT_ICONS: Record<string, string> = {
+                            keyword_researcher: '🔍',
+                            geo_content_generator: '🌍',
+                            seo_auditor: '📊',
+                            backlink_outreach: '🔗',
+                            knowledge_base_curator: '📚',
+                          };
+                          const label = AGENT_LABELS[step.agent] ?? step.agent.replace(/_/g, ' ');
+                          const icon = AGENT_ICONS[step.agent] ?? '🤖';
+
+                          // Parse output with resilience for fenced, escaped, or double-encoded JSON.
+                          let parsed: Record<string, unknown> | null = null;
+                          let readableOutput = '';
+                          if (step.outputSummary) {
+                            let raw = step.outputSummary.trim();
+                            raw = raw.replace(/^```(?:json|JSON)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
+
+                            const normalizeEscapes = (value: string): string => value
+                              .replace(/\\n/g, '\n')
+                              .replace(/\\t/g, '\t')
+                              .replace(/\\r/g, '')
+                              .replace(/\\"/g, '"')
+                              .trim();
+
+                            const toObject = (value: unknown): Record<string, unknown> | null => (
+                              value && typeof value === 'object' && !Array.isArray(value)
+                                ? (value as Record<string, unknown>)
+                                : null
+                            );
+
+                            const tryParse = (value: string): unknown => {
+                              try {
+                                return JSON.parse(value);
+                              } catch {
+                                return null;
+                              }
+                            };
+
+                            let decoded: unknown = tryParse(raw);
+                            if (typeof decoded === 'string') {
+                              decoded = tryParse(decoded.trim()) ?? decoded;
+                            }
+
+                            parsed = toObject(decoded);
+
+                            if (!parsed) {
+                              const firstObjectBrace = raw.indexOf('{');
+                              const lastObjectBrace = raw.lastIndexOf('}');
+                              if (firstObjectBrace >= 0 && lastObjectBrace > firstObjectBrace) {
+                                const extractedObject = raw.slice(firstObjectBrace, lastObjectBrace + 1);
+                                const parsedObject = tryParse(extractedObject);
+                                parsed = toObject(parsedObject);
+                              }
+                            }
+
+                            if (!parsed) {
+                              const firstArrayBracket = raw.indexOf('[');
+                              const lastArrayBracket = raw.lastIndexOf(']');
+                              if (firstArrayBracket >= 0 && lastArrayBracket > firstArrayBracket) {
+                                const extractedArray = raw.slice(firstArrayBracket, lastArrayBracket + 1);
+                                const parsedArray = tryParse(extractedArray);
+                                if (Array.isArray(parsedArray)) {
+                                  parsed = { items: parsedArray };
+                                }
+                              }
+                            }
+
+                            if (!parsed) {
+                              readableOutput = normalizeEscapes(raw)
+                                .replace(/^"|"$/g, '')
+                                .replace(/\s{2,}/g, ' ')
+                                .replace(/\n{3,}/g, '\n\n')
+                                .trim();
+                            }
+                          }
+
+                          const statusColor = step.status === 'success' ? 'rgba(14,200,198,0.9)' : step.status === 'failed' ? 'rgba(255,120,120,0.9)' : step.status === 'running' ? 'rgba(255,210,90,0.9)' : 'rgba(180,200,220,0.35)';
+                          const statusBg = step.status === 'success' ? 'rgba(14,124,123,0.15)' : step.status === 'failed' ? 'rgba(120,30,30,0.2)' : step.status === 'running' ? 'rgba(55,38,0,0.18)' : 'rgba(255,255,255,0.04)';
+                          const statusBorder = step.status === 'success' ? 'rgba(14,200,198,0.25)' : step.status === 'failed' ? 'rgba(255,90,90,0.3)' : step.status === 'running' ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.07)';
+                          const statusIcon = step.status === 'running' ? '⟳' : step.status === 'success' ? '✓' : step.status === 'failed' ? '✗' : '·';
+
+                          // ── Agent-specific structured output renderers ───────
+                          const renderOutput = () => {
+                            if (!parsed) {
+                              if (!readableOutput) return null;
+                              return (
+                                <div className="px-4 pb-4">
+                                  <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.16)] p-3.5">
+                                    <div className="font-mono text-[7.5px] uppercase tracking-[1.4px] text-[rgba(255,255,255,0.36)] mb-2">Agent Output</div>
+                                    <p className="text-[10px] text-[rgba(200,225,245,0.75)] leading-relaxed whitespace-pre-wrap break-words">
+                                      {readableOutput}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'keyword_researcher') {
+                              const opps = (parsed.opportunities as Array<{keyword:string;currentPosition:number;searchVolume:number;difficulty:number;priority:string;contentBrief:string}>) ?? [];
+                              const total = (parsed.totalOpportunities as number) ?? opps.length;
+                              const gain = (parsed.estimatedMonthlyTrafficGain as number) ?? null;
+                              return (
+                                <div className="px-4 pb-4 space-y-4">
+                                  <div className="flex gap-6">
+                                    <div className="text-center"><div className="text-[20px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Opportunities</div></div>
+                                    {gain ? <div className="text-center"><div className="text-[20px] font-bold text-[rgba(255,210,90,0.95)]">+{gain.toLocaleString()}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Est. Monthly Visits</div></div> : null}
+                                  </div>
+                                  <div className="space-y-3.5">
+                                    {opps.slice(0, 7).map((o, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.15)] p-4 hover:border-[rgba(255,255,255,0.12)] transition-colors">
+                                        <div className="flex items-start justify-between gap-3 mb-2.5">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-[11px] font-semibold text-[rgba(220,235,255,0.92)] mb-2">{o.keyword}</div>
+                                            <div className="flex gap-3 flex-wrap">
+                                              <span className="font-mono text-[8.5px] text-[rgba(180,200,220,0.65)]"><span className="text-[rgba(255,210,90,0.95)]">#{o.currentPosition}</span> position</span>
+                                              <span className="font-mono text-[8.5px] text-[rgba(180,200,220,0.65)]"><span className="text-[rgba(14,200,198,0.85)]">{o.searchVolume?.toLocaleString()}</span> monthly</span>
+                                              <span className="font-mono text-[8.5px] text-[rgba(180,200,220,0.65)]">KD <span className="text-[rgba(200,225,245,0.8)]">{o.difficulty}</span></span>
+                                            </div>
+                                          </div>
+                                          <span className="font-mono text-[7.5px] uppercase tracking-[1.2px] px-2.5 py-1 rounded-full shrink-0" style={{ background: o.priority === 'high' ? 'rgba(14,124,123,0.35)' : 'rgba(80,60,0,0.35)', color: o.priority === 'high' ? 'rgba(14,200,198,0.95)' : 'rgba(255,210,90,0.9)' }}>{o.priority}</span>
+                                        </div>
+                                        <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.05)]">
+                                          <p className="text-[10px] text-[rgba(180,200,220,0.75)] leading-relaxed whitespace-pre-wrap">{o.contentBrief}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                    {opps.length > 7 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] text-center pt-2 pb-1">+{opps.length - 7} more keywords available</div> : null}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'geo_content_generator') {
+                              const regions = (parsed.regions as Array<{locale:string;city:string;headline:string;metaDescription:string;bodyExcerpt:string;targetKeyword:string}>) ?? [];
+                              const total = (parsed.totalPages as number) ?? regions.length;
+                              return (
+                                <div className="px-4 pb-4 space-y-3.5">
+                                  <div className="flex gap-4">
+                                    <div className="text-center"><div className="text-[20px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Geo Pages</div></div>
+                                  </div>
+                                  <div className="space-y-3">
+                                    {regions.slice(0, 5).map((r, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.15)] p-3.5 hover:border-[rgba(255,255,255,0.12)] transition-colors">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <span className="font-mono text-[8px] px-2 py-0.5 rounded bg-[rgba(14,124,123,0.3)] text-[rgba(14,200,198,0.85)] uppercase">{r.locale}</span>
+                                          <span className="text-[11px] font-semibold text-[rgba(220,235,255,0.9)]">{r.city}</span>
+                                        </div>
+                                        <div className="text-[10.5px] text-[rgba(200,225,245,0.85)] mb-2 font-medium leading-relaxed">{r.headline}</div>
+                                        {r.metaDescription ? <p className="text-[9px] text-[rgba(160,185,210,0.65)] leading-relaxed mb-1.5">{r.metaDescription}</p> : null}
+                                        {r.bodyExcerpt ? <p className="text-[9px] text-[rgba(180,200,220,0.6)] leading-relaxed italic bg-[rgba(255,255,255,0.02)] p-2 rounded">{r.bodyExcerpt}</p> : null}
+                                      </div>
+                                    ))}
+                                    {regions.length > 5 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center pt-1">+{regions.length - 5} more pages</div> : null}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'seo_auditor') {
+                              const score = (parsed.overallScore as number) ?? null;
+                              const cwv = parsed.coreWebVitals as {lcp_s?:number;fid_ms?:number;cls?:number;status?:string} | undefined;
+                              const issues = (parsed.issues as Array<{type:string;page:string;severity:string;recommendation:string}>) ?? [];
+                              const da = (parsed.domainAuthority as number) ?? null;
+                              const scoreColor = score !== null ? (score >= 80 ? 'rgba(14,200,198,0.95)' : score >= 60 ? 'rgba(255,210,90,0.95)' : 'rgba(255,120,120,0.9)') : 'rgba(180,200,220,0.5)';
+                              return (
+                                <div className="px-4 pb-4 space-y-3.5">
+                                  <div className="flex gap-6 items-end">
+                                    {score !== null ? <div><div className="text-[28px] font-bold leading-none" style={{ color: scoreColor }}>{score}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">SEO Score</div></div> : null}
+                                    {da !== null ? <div><div className="text-[20px] font-bold text-[rgba(200,180,255,0.9)]">{da}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px]">Domain Authority</div></div> : null}
+                                    {cwv ? <div className="flex gap-3">
+                                      {cwv.lcp_s !== undefined ? <div className="text-center"><div className="font-mono text-[12px] font-bold" style={{ color: cwv.lcp_s <= 2.5 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.lcp_s}s</div><div className="font-mono text-[7px] text-[rgba(255,255,255,0.35)] uppercase">LCP</div></div> : null}
+                                      {cwv.cls !== undefined ? <div className="text-center"><div className="font-mono text-[12px] font-bold" style={{ color: cwv.cls <= 0.1 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.cls}</div><div className="font-mono text-[7px] text-[rgba(255,255,255,0.35)] uppercase">CLS</div></div> : null}
+                                      {cwv.fid_ms !== undefined ? <div className="text-center"><div className="font-mono text-[12px] font-bold" style={{ color: cwv.fid_ms <= 100 ? 'rgba(14,200,198,0.9)' : 'rgba(255,210,90,0.9)' }}>{cwv.fid_ms}ms</div><div className="font-mono text-[7px] text-[rgba(255,255,255,0.35)] uppercase">FID</div></div> : null}
+                                    </div> : null}
+                                  </div>
+                                  {issues.length > 0 ? (
+                                    <div className="space-y-2">
+                                      <div className="font-mono text-[8px] tracking-[2px] text-[rgba(255,255,255,0.4)] uppercase">Issues Found ({issues.length})</div>
+                                      {issues.slice(0, 6).map((iss, i) => (
+                                        <div key={i} className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.15)] p-3">
+                                          <div className="flex gap-2 mb-1.5">
+                                            <span className="font-mono text-[8px] px-2 py-0.5 rounded shrink-0 uppercase font-semibold" style={{ background: iss.severity === 'high' ? 'rgba(120,30,30,0.4)' : iss.severity === 'medium' ? 'rgba(80,55,0,0.4)' : 'rgba(30,50,80,0.4)', color: iss.severity === 'high' ? 'rgba(255,120,120,0.9)' : iss.severity === 'medium' ? 'rgba(255,210,90,0.9)' : 'rgba(100,180,255,0.8)' }}>{iss.severity}</span>
+                                            <span className="font-mono text-[9px] text-[rgba(200,225,245,0.8)]">{iss.type?.replace(/_/g, ' ')}</span>
+                                          </div>
+                                          <div className="text-[9px] text-[rgba(160,185,210,0.65)] mb-1">{iss.page}</div>
+                                          {iss.recommendation ? <div className="text-[9px] text-[rgba(180,200,220,0.7)] mt-1 leading-relaxed bg-[rgba(255,255,255,0.01)] p-1.5 rounded">{iss.recommendation}</div> : null}
+                                        </div>
+                                      ))}
+                                      {issues.length > 6 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center pt-1">+{issues.length - 6} more issues</div> : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'backlink_outreach') {
+                              const targets = (parsed.targets as Array<{domain:string;domainAuthority:number;emailSubject:string;emailBody:string;status:string}>) ?? [];
+                              const drafted = (parsed.drafted as number) ?? targets.length;
+                              const responseRate = (parsed.estimatedResponseRate as number) ?? null;
+                              return (
+                                <div className="px-4 pb-4 space-y-3.5">
+                                  <div className="flex gap-5">
+                                    <div className="text-center"><div className="text-[20px] font-bold text-[rgba(14,200,198,0.95)]">{drafted}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Outreach Drafted</div></div>
+                                    {responseRate ? <div className="text-center"><div className="text-[20px] font-bold text-[rgba(255,210,90,0.9)]">{Math.round(responseRate * 100)}%</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">Est. Response</div></div> : null}
+                                  </div>
+                                  <div className="space-y-3">
+                                    {targets.slice(0, 5).map((t, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.15)] p-3.5 hover:border-[rgba(255,255,255,0.12)] transition-colors">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-[11px] font-semibold text-[rgba(14,200,198,0.92)]">{t.domain}</span>
+                                          <span className="font-mono text-[8.5px] text-[rgba(200,180,255,0.8)]">DA {t.domainAuthority}</span>
+                                        </div>
+                                        {t.emailSubject ? <div className="text-[10px] text-[rgba(220,235,255,0.82)] font-medium mb-2 leading-relaxed">"{t.emailSubject}"</div> : null}
+                                        {t.emailBody ? <p className="text-[9.5px] text-[rgba(160,185,210,0.7)] leading-relaxed whitespace-pre-wrap bg-[rgba(255,255,255,0.01)] p-2.5 rounded">{t.emailBody}</p> : null}
+                                      </div>
+                                    ))}
+                                    {targets.length > 5 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center pt-1">+{targets.length - 5} more targets</div> : null}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (step.agent === 'knowledge_base_curator') {
+                              const entries = (parsed.entries as Array<{title:string;category:string;summary:string;tags:string[]}>) ?? [];
+                              const total = (parsed.totalCreated as number) ?? entries.length;
+                              return (
+                                <div className="px-4 pb-4 space-y-3.5">
+                                  <div className="text-center"><div className="text-[20px] font-bold text-[rgba(14,200,198,0.95)]">{total}</div><div className="font-mono text-[7.5px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1.5px] mt-1">KB Entries</div></div>
+                                  <div className="space-y-3">
+                                    {entries.slice(0, 6).map((e, i) => (
+                                      <div key={i} className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.15)] p-3.5 hover:border-[rgba(255,255,255,0.12)] transition-colors">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <span className="font-mono text-[8px] px-2 py-0.5 rounded bg-[rgba(80,40,120,0.3)] text-[rgba(180,140,255,0.85)] uppercase">{e.category?.replace(/_/g, ' ')}</span>
+                                          <span className="text-[11px] text-[rgba(220,235,255,0.88)] font-semibold">{e.title}</span>
+                                        </div>
+                                        <p className="text-[9.5px] text-[rgba(180,200,220,0.7)] leading-relaxed mb-2">{e.summary}</p>
+                                        {e.tags?.length ? (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {e.tags.slice(0, 5).map((tag, ti) => (
+                                              <span key={ti} className="font-mono text-[7.5px] px-2 py-0.5 rounded bg-[rgba(14,124,123,0.25)] text-[rgba(14,200,198,0.75)]">#{tag}</span>
+                                            ))}
+                                            {e.tags.length > 5 ? <span className="font-mono text-[7px] text-[rgba(255,255,255,0.4)]">+{e.tags.length - 5}</span> : null}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    ))}
+                                    {entries.length > 6 ? <div className="font-mono text-[9px] text-[rgba(255,255,255,0.3)] text-center pt-1">+{entries.length - 6} more entries</div> : null}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // Generic fallback — key/value grid for unknown agents
+                            const topLevelEntries = Object.entries(parsed).filter(([, v]) => typeof v !== 'object' || v === null).slice(0, 8);
+                            if (topLevelEntries.length > 0) {
+                              return (
+                                <div className="px-4 pb-4 grid grid-cols-2 gap-2">
+                                  {topLevelEntries.map(([k, v]) => (
+                                    <div key={k} className="rounded-md bg-[rgba(0,0,0,0.2)] px-3 py-2">
+                                      <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] uppercase tracking-[1px] mb-0.5">{k.replace(/_/g, ' ')}</div>
+                                      <div className="font-mono text-[11px] text-[rgba(200,225,245,0.82)]">{String(v)}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="px-4 pb-4">
+                                <div className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(0,0,0,0.16)] p-3.5">
+                                  <div className="font-mono text-[7.5px] uppercase tracking-[1.4px] text-[rgba(255,255,255,0.36)] mb-2">Structured Output</div>
+                                  <pre className="text-[9.5px] text-[rgba(200,225,245,0.72)] leading-relaxed whitespace-pre-wrap break-words font-mono">
+                                    {JSON.stringify(parsed, null, 2)}
+                                  </pre>
+                                </div>
+                              </div>
+                            );
+                          };
+
+                          return (
+                            <div key={step.id} className="rounded-xl border overflow-hidden" style={{ borderColor: statusBorder, background: statusBg }}>
+                              {/* Step header */}
+                              <div className="flex items-center justify-between px-4 py-3">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="text-[14px]">{icon}</span>
+                                  <div>
+                                    <div className="text-[11.5px] text-[rgba(220,235,255,0.9)] font-semibold">{label}</div>
+                                    {step.startedAt && step.finishedAt ? (
+                                      <div className="font-mono text-[8px] text-[rgba(180,200,220,0.35)] mt-0.5">
+                                        {Math.round((new Date(step.finishedAt).getTime() - new Date(step.startedAt).getTime()) / 1000)}s
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                                <div className="font-mono text-[8.5px] uppercase tracking-[1.5px] flex items-center gap-1.5 px-2.5 py-1 rounded-full border" style={{ color: statusColor, borderColor: statusBorder }}>
+                                  <span>{statusIcon}</span><span>{step.status}</span>
+                                </div>
+                              </div>
+                              {/* Structured output */}
+                              {parsed || step.outputSummary ? (
+                                <div className="border-t border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.18)] pt-3">
+                                  {renderOutput()}
+                                </div>
+                              ) : null}
+                              {/* Error */}
+                              {step.error ? (
+                                <div className="border-t border-[rgba(255,90,90,0.2)] px-4 py-3 bg-[rgba(100,20,20,0.15)]">
+                                  <div className="font-mono text-[8px] tracking-[2px] text-[rgba(255,120,120,0.6)] uppercase mb-1">Error</div>
+                                  <div className="font-mono text-[9px] text-[rgba(255,160,160,0.85)] leading-relaxed">{step.error}</div>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {a2aMessages.length > 0 ? (
+                      <div>
+                        <div className="font-mono text-[8.5px] tracking-[2px] text-[rgba(255,255,255,0.28)] uppercase mb-2">Agent Log</div>
+                        <div className="rounded-lg border border-[rgba(255,255,255,0.07)] bg-[rgba(0,0,0,0.28)] p-3 max-h-[220px] overflow-y-auto space-y-1.5">
+                          {a2aMessages.slice(-12).map(msg => (
+                            <div key={msg.id} className="font-mono text-[9.5px] text-[rgba(210,228,248,0.65)] leading-relaxed">
+                              <span className="text-[rgba(14,200,198,0.75)]">[{msg.role}{msg.agent ? `:${msg.agent}` : ''}]</span>{' '}{msg.content}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </GlassCard>
+                ) : null}
+              </div>
+            )}
+
+            {activeTab === 'agents' && activeAgentsLever === 'campaign-history' && (
+              <div className="space-y-5">
+                <GlassCard className="p-5">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <div className={`font-mono text-[10px] tracking-[2.4px] uppercase ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.78)]'}`}>
+                        Campaign History
+                      </div>
+                      <div className={`mt-1 text-[12px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(200,225,245,0.58)]'}`}>
+                        Review previous Deep SEO sessions and load any run back into Campaign progress.
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className={`rounded-full px-3 py-1 border font-mono text-[8px] uppercase tracking-[1.2px] ${isLightTheme ? 'border-[rgba(164,131,174,0.35)] text-[#8F6B97] bg-[rgba(255,255,255,0.6)]' : 'border-[rgba(14,200,198,0.3)] text-[rgba(14,200,198,0.8)] bg-[rgba(14,124,123,0.12)]'}`}>
+                        {campaignHistory.length} stored
+                      </div>
+                      {campaignHistory.length > 0 ? (
+                        <button
+                          onClick={handleClearCampaignHistory}
+                          className={`rounded-full border px-3 py-1.5 font-mono text-[8px] uppercase tracking-[1.1px] transition-all ${isLightTheme ? 'border-[rgba(185,156,190,0.45)] text-[#8F6B97] hover:bg-[rgba(244,228,243,0.82)]' : 'border-[rgba(255,90,90,0.28)] text-[rgba(255,150,150,0.86)] hover:bg-[rgba(110,30,30,0.2)]'}`}
+                        >
+                          Clear History
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {campaignHistory.length === 0 ? (
+                    <div className={`rounded-xl border px-4 py-5 text-center ${isLightTheme ? 'border-[rgba(185,156,190,0.24)] bg-[rgba(255,255,255,0.45)]' : 'border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)]'}`}>
+                      <div className={`font-mono text-[10px] uppercase tracking-[2px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(255,255,255,0.44)]'}`}>
+                        No Campaign History Yet
+                      </div>
+                      <div className={`mt-2 font-mono text-[9px] ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.45)]'}`}>
+                        Launch a Deep SEO Campaign to create your first tracked session.
+                      </div>
+                      <button
+                        onClick={() => setActiveAgentsLever('campaigns')}
+                        className={`mt-3 rounded-full border px-3 py-1.5 font-mono text-[8px] uppercase tracking-[1.1px] transition-all ${isLightTheme ? 'border-[rgba(164,131,174,0.45)] text-[#8F6B97] hover:bg-[rgba(244,228,243,0.82)]' : 'border-[rgba(14,200,198,0.32)] text-[rgba(14,200,198,0.82)] hover:bg-[rgba(14,124,123,0.2)]'}`}
+                      >
+                        Go To Campaigns
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {campaignHistory.map(entry => {
+                        const isActive = entry.sessionId === a2aSessionId;
+                        const statusColor =
+                          entry.status === 'completed' ? 'rgba(14,200,198,0.9)'
+                          : entry.status === 'failed' ? 'rgba(255,120,120,0.9)'
+                          : 'rgba(255,210,90,0.9)';
+
+                        return (
+                          <div
+                            key={entry.sessionId}
+                            className={`flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 ${isActive
+                              ? (isLightTheme ? 'border-[rgba(185,156,190,0.45)] bg-[rgba(245,232,244,0.8)]' : 'border-[rgba(14,200,198,0.35)] bg-[rgba(14,124,123,0.1)]')
+                              : (isLightTheme ? 'border-[rgba(185,156,190,0.22)] bg-[rgba(255,255,255,0.45)]' : 'border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)]')}`}
+                          >
+                            <div className="flex-1 min-w-[220px]">
+                              <div className={`font-mono text-[10.5px] truncate ${isLightTheme ? 'text-[#8F6B97]' : 'text-[rgba(220,235,255,0.86)]'}`}>
+                                {entry.siteUrl}
+                              </div>
+                              <div className={`font-mono text-[9px] truncate mt-0.5 ${isLightTheme ? 'text-[#B99CBE]' : 'text-[rgba(180,200,220,0.5)]'}`}>
+                                {entry.keywords}
+                              </div>
+                              <div className={`font-mono text-[8px] mt-1 ${isLightTheme ? 'text-[rgba(155,126,166,0.74)]' : 'text-[rgba(180,200,220,0.32)]'}`}>
+                                {new Date(entry.launchedAt).toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="font-mono text-[8.5px] uppercase tracking-[1px]" style={{ color: statusColor }}>{entry.status}</div>
+                              {!isActive ? (
+                                <button
+                                  onClick={() => { void handleLoadCampaignSession(entry); }}
+                                  className={`font-mono text-[8px] uppercase tracking-[1px] px-2.5 py-1.5 rounded border transition-colors ${isLightTheme ? 'border-[rgba(185,156,190,0.45)] text-[#8F6B97] hover:bg-[rgba(244,228,243,0.82)]' : 'border-[rgba(14,200,198,0.3)] text-[rgba(14,200,198,0.78)] hover:bg-[rgba(14,124,123,0.2)]'}`}
+                                >
+                                  Load Session
+                                </button>
+                              ) : (
+                                <div className={`font-mono text-[8px] uppercase tracking-[1px] ${isLightTheme ? 'text-[#A483AE]' : 'text-[rgba(14,200,198,0.55)]'}`}>Active</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </GlassCard>
               </div>
             )}
 
@@ -2505,7 +3501,7 @@ export default function DashboardClient() {
                         Site Traffic · 30 Days
                       </div>
                       <div className="px-2 py-[3px] rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] font-mono text-[8px] text-[rgba(14,200,198,0.88)]">
-                        +18% MoM
+                        {trafficKpis.momLabel}
                       </div>
                     </div>
 
@@ -2541,7 +3537,7 @@ export default function DashboardClient() {
                         {isAnalyticsTrafficLoading ? (
                           <Skeleton className="h-8 w-16" />
                         ) : (
-                          <div className="font-display text-[29px] leading-none text-[rgba(14,200,198,0.95)]">12.4K</div>
+                          <div className="font-display text-[29px] leading-none text-[rgba(14,200,198,0.95)]">{trafficKpis.visitors}</div>
                         )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Visitors</div>
                       </div>
@@ -2549,7 +3545,7 @@ export default function DashboardClient() {
                         {isAnalyticsTrafficLoading ? (
                           <Skeleton className="h-8 w-12" />
                         ) : (
-                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">3.2</div>
+                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">{trafficKpis.pagesPerSession}</div>
                         )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Pages/Session</div>
                       </div>
@@ -2557,7 +3553,7 @@ export default function DashboardClient() {
                         {isAnalyticsTrafficLoading ? (
                           <Skeleton className="h-8 w-16" />
                         ) : (
-                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">2m 45s</div>
+                          <div className="font-display text-[29px] leading-none text-[rgba(255,255,255,0.86)]">{trafficKpis.avgDuration}</div>
                         )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Avg Duration</div>
                       </div>
@@ -2565,7 +3561,7 @@ export default function DashboardClient() {
                         {isAnalyticsTrafficLoading ? (
                           <Skeleton className="h-8 w-14" />
                         ) : (
-                          <div className="font-display text-[29px] leading-none text-[rgba(30,165,80,0.9)]">38%</div>
+                          <div className="font-display text-[29px] leading-none text-[rgba(30,165,80,0.9)]">{trafficKpis.bounceRate}</div>
                         )}
                         <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] mt-1">Bounce Rate</div>
                       </div>
@@ -2611,12 +3607,15 @@ export default function DashboardClient() {
                   </GlassCard>
                 </div>
 
-                <GlassCard className="px-5 py-4 border-[rgba(255,255,255,0.1)] bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]">
+                <GlassCard className="px-5 py-4 border-[rgba(255,255,255,0.1)] bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]"
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="font-mono text-[10px] tracking-[3px] uppercase text-[rgba(255,255,255,0.38)]">
+                    <div className="font-mono text-[10px] tracking-[3px] uppercase text-[rgba(255,255,255,0.38)]"
+                      style={isLightTheme ? { color: '#A483AE' } : undefined}>
                       Top Pages
                     </div>
-                    <div className="px-2 py-[3px] rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] font-mono text-[8px] text-[rgba(14,200,198,0.88)]">
+                    <div className="px-2 py-[3px] rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] font-mono text-[8px] text-[rgba(14,200,198,0.88)]"
+                      style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                       GSC Connected
                     </div>
                   </div>
@@ -2624,18 +3623,20 @@ export default function DashboardClient() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[720px] table-fixed border-collapse">
                       <thead>
-                        <tr className="border-b border-[rgba(255,255,255,0.08)]">
-                          <th className="py-2.5 pr-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Page</th>
-                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Visits</th>
-                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Avg Position</th>
-                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">CTR</th>
-                          <th className="py-2.5 pl-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Generated By</th>
+                        <tr className="border-b border-[rgba(255,255,255,0.08)]"
+                          style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
+                          <th className="py-2.5 pr-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Page</th>
+                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Visits</th>
+                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Avg Position</th>
+                          <th className="py-2.5 px-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>CTR</th>
+                          <th className="py-2.5 pl-3 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Generated By</th>
                         </tr>
                       </thead>
                       <tbody>
                         {isAnalyticsTrafficLoading ? (
                           Array.from({ length: 5 }).map((_, index) => (
-                            <tr key={`analytics-top-pages-skeleton-${index}`} className="border-b border-[rgba(255,255,255,0.05)]">
+                            <tr key={`analytics-top-pages-skeleton-${index}`} className="border-b border-[rgba(255,255,255,0.05)]"
+                              style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.12)' } : undefined}>
                               <td className="py-2.5 pr-3"><Skeleton className="h-4 w-64" /></td>
                               <td className="py-2.5 px-3"><Skeleton className="h-4 w-14" /></td>
                               <td className="py-2.5 px-3"><Skeleton className="h-4 w-12" /></td>
@@ -2645,12 +3646,18 @@ export default function DashboardClient() {
                           ))
                         ) : (
                           analyticsTopPages.map((row) => (
-                            <tr key={row.page} className="border-b border-[rgba(255,255,255,0.05)]">
-                              <td className="py-2.5 pr-3 font-[Rajdhani] text-[13px] font-semibold text-[rgba(235,245,255,0.9)]">{row.page}</td>
-                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.visits}</td>
-                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.avgPosition}</td>
-                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]">{row.ctr}</td>
-                              <td className="py-2.5 pl-3 font-mono text-[11px] text-[rgba(14,200,198,0.82)]">{row.generatedBy}</td>
+                            <tr key={row.page} className="border-b border-[rgba(255,255,255,0.05)]"
+                              style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.12)' } : undefined}>
+                              <td className="py-2.5 pr-3 font-[Rajdhani] text-[13px] font-semibold text-[rgba(235,245,255,0.9)]"
+                                style={isLightTheme ? { color: '#6B4F72' } : undefined}>{row.page}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]"
+                                style={isLightTheme ? { color: '#8F6B97' } : undefined}>{row.visits}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]"
+                                style={isLightTheme ? { color: '#8F6B97' } : undefined}>{row.avgPosition}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-[rgba(255,255,255,0.68)]"
+                                style={isLightTheme ? { color: '#8F6B97' } : undefined}>{row.ctr}</td>
+                              <td className="py-2.5 pl-3 font-mono text-[11px] text-[rgba(14,200,198,0.82)]"
+                                style={isLightTheme ? { color: '#9A6FA8' } : undefined}>{row.generatedBy}</td>
                             </tr>
                           ))
                         )}
@@ -2741,7 +3748,7 @@ export default function DashboardClient() {
                             <Skeleton className="mx-auto mb-1 h-7 w-16" />
                           ) : (
                             <div className="font-display text-[24px] leading-none font-bold text-[rgba(14,200,198,0.92)] mb-1">
-                              0.71%
+                              {conversionKpis.overallConvRate}
                             </div>
                           )}
                           <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] tracking-tight">
@@ -2753,7 +3760,7 @@ export default function DashboardClient() {
                             <Skeleton className="mx-auto mb-1 h-7 w-12" />
                           ) : (
                             <div className="font-display text-[24px] leading-none font-bold text-[rgba(30,165,80,0.85)] mb-1">
-                              31%
+                              {conversionKpis.trialToPaid}
                             </div>
                           )}
                           <div className="font-mono text-[8px] text-[rgba(255,255,255,0.35)] tracking-tight">
@@ -2830,10 +3837,10 @@ export default function DashboardClient() {
                           ARR
                         </div>
                         <div className="font-display text-[28px] leading-none font-bold text-[rgba(14,200,198,0.95)]">
-                          $94K
+                          {conversionKpis.arr}
                         </div>
                         <div className="font-mono text-[8px] text-[rgba(30,165,80,0.8)] mt-1.5">
-                          ▲ +12% YoY
+                          {conversionKpis.arrGrowthLabel !== '—' ? `▲ ${conversionKpis.arrGrowthLabel}` : conversionKpis.arrGrowthLabel}
                         </div>
                       </div>
                       <div className="p-4 rounded-lg bg-[rgba(0,0,0,0.25)] border border-[rgba(255,80,80,0.25)]">
@@ -2841,10 +3848,10 @@ export default function DashboardClient() {
                           Churn Rate
                         </div>
                         <div className="font-display text-[28px] leading-none font-bold text-[rgba(255,120,120,0.95)]">
-                          3.2%
+                          {conversionKpis.churnRate}
                         </div>
                         <div className="font-mono text-[8px] text-[rgba(255,100,100,0.8)] mt-1.5">
-                          ▼ -0.8pp QoQ
+                          {conversionKpis.churnRate === '—' ? '—' : 'From payment data'}
                         </div>
                       </div>
                     </div>
@@ -2858,7 +3865,7 @@ export default function DashboardClient() {
                       Avg. Customer LTV
                     </div>
                     <div className="font-display text-[30px] font-bold text-[rgba(14,200,198,0.92)]">
-                      $8,450
+                      {conversionKpis.avgLtv}
                     </div>
                     <div className="font-mono text-[8px] text-[rgba(255,255,255,0.3)] mt-2">
                       Over 24 month avg
@@ -2870,7 +3877,7 @@ export default function DashboardClient() {
                       CAC Payback
                     </div>
                     <div className="font-display text-[30px] font-bold text-[rgba(30,165,80,0.85)]">
-                      4.2M
+                      {conversionKpis.cacPayback}
                     </div>
                     <div className="font-mono text-[8px] text-[rgba(255,255,255,0.3)] mt-2">
                       Months to recover
@@ -2882,10 +3889,10 @@ export default function DashboardClient() {
                       Active Subscriptions
                     </div>
                     <div className="font-display text-[30px] font-bold text-[rgba(255,210,100,0.92)]">
-                      1,247
+                      {conversionKpis.activeSubscriptions}
                     </div>
                     <div className="font-mono text-[8px] text-[rgba(255,255,255,0.3)] mt-2">
-                      Growing 8% MoM
+                      {conversionKpis.subsMomLabel}
                     </div>
                   </GlassCard>
                 </div>
@@ -2896,7 +3903,8 @@ export default function DashboardClient() {
               <div>
                 {!isAnalyticsAbTestsLoading && abTests.length === 0 ? (
                   <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
+                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]"
+                      style={isLightTheme ? { color: '#A483AE' } : undefined}>
                       No A/B tests are available for this workspace yet.
                     </div>
                   </GlassCard>
@@ -2904,30 +3912,34 @@ export default function DashboardClient() {
 
                 {/* A/B Tests Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[10px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase">
+                  <div className="font-mono text-[10px] tracking-[3px] text-[rgba(255,255,255,0.34)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     A/B Tests
                   </div>
                   {isAnalyticsAbTestsLoading ? (
                     <Skeleton className="h-7 w-24 rounded-full" />
                   ) : (
-                    <div className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)]">
+                    <div className="rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1.5 font-mono text-[9px] text-[rgba(14,200,198,0.92)] shadow-[0_0_18px_rgba(14,124,123,0.15)]"
+                      style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                       {abTests.length} Active Tests
                     </div>
                   )}
                 </div>
 
                 {/* A/B Tests Table */}
-                <GlassCard className="px-5 py-4 border-[rgba(255,255,255,0.1)] bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]">
+                <GlassCard className="px-5 py-4 border-[rgba(255,255,255,0.1)] bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]"
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[920px] table-fixed border-collapse">
                       <thead>
-                        <tr className="border-b border-[rgba(255,255,255,0.08)]">
-                          <th className="py-3 pr-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Test</th>
-                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Variant A</th>
-                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Variant B</th>
-                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Winner</th>
-                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Confidence</th>
-                          <th className="py-3 pl-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal">Status</th>
+                        <tr className="border-b border-[rgba(255,255,255,0.08)]"
+                          style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.2)' } : undefined}>
+                          <th className="py-3 pr-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Test</th>
+                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Variant A</th>
+                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Variant B</th>
+                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Winner</th>
+                          <th className="py-3 px-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Confidence</th>
+                          <th className="py-3 pl-4 text-left font-mono text-[9px] tracking-[2px] text-[rgba(255,255,255,0.34)] uppercase font-normal" style={isLightTheme ? { color: '#A483AE' } : undefined}>Status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2944,14 +3956,17 @@ export default function DashboardClient() {
                             }))
                           : abTests
                         ).map((test) => (
-                          <tr key={test.id} className="border-b border-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.03)] transition-colors">
+                          <tr key={test.id} className="border-b border-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.03)] transition-colors"
+                            style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.12)' } : undefined}>
                             {/* Test Name */}
-                            <td className="py-3.5 pr-4 font-[Rajdhani] text-[12px] font-semibold text-[rgba(235,245,255,0.9)]">
+                            <td className="py-3.5 pr-4 font-[Rajdhani] text-[12px] font-semibold text-[rgba(235,245,255,0.9)]"
+                              style={isLightTheme ? { color: '#6B4F72' } : undefined}>
                               {isAnalyticsAbTestsLoading ? <Skeleton className="h-4 w-36" /> : test.name}
                             </td>
 
                             {/* Variant A */}
-                            <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed">
+                            <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed"
+                              style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {isAnalyticsAbTestsLoading ? <Skeleton className="h-4 w-40" /> : <div>{test.variantA.label}</div>}
                               {!isAnalyticsAbTestsLoading && test.variantA.lift !== 0 && (
                                 <div className={`text-[9px] mt-0.5 ${test.variantA.lift > 0 ? 'text-[rgba(30,165,80,0.8)]' : 'text-[rgba(255,120,120,0.7)]'}`}>
@@ -2961,7 +3976,8 @@ export default function DashboardClient() {
                             </td>
 
                             {/* Variant B */}
-                            <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed">
+                            <td className="py-3.5 px-4 font-mono text-[10px] text-[rgba(255,255,255,0.65)] leading-relaxed"
+                              style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                               {isAnalyticsAbTestsLoading ? <Skeleton className="h-4 w-40" /> : <div>{test.variantB.label}</div>}
                               {!isAnalyticsAbTestsLoading && test.variantB.lift !== 0 && (
                                 <div className={`text-[9px] mt-0.5 ${test.variantB.lift > 0 ? 'text-[rgba(30,165,80,0.8)]' : 'text-[rgba(255,120,120,0.7)]'}`}>
@@ -2976,10 +3992,13 @@ export default function DashboardClient() {
                                 <Skeleton className="h-4 w-20" />
                               ) : test.winner && test.winner !== 'none' ? (
                                 <div className="font-mono text-[11px] text-[rgba(30,165,80,0.85)]">
-                                  <span className="font-bold">B</span> <span className="text-[rgba(255,255,255,0.55)]">+{test.winnerLift}%</span>
+                                  <span className="font-bold">B</span>{' '}
+                                  <span className="text-[rgba(255,255,255,0.55)]"
+                                    style={isLightTheme ? { color: '#A483AE' } : undefined}>+{test.winnerLift}%</span>
                                 </div>
                               ) : (
-                                <div className="font-mono text-[10px] text-[rgba(255,255,255,0.45)]">
+                                <div className="font-mono text-[10px] text-[rgba(255,255,255,0.45)]"
+                                  style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                                   {test.status === 'too-early' ? 'Too early' : 'In progress'}
                                 </div>
                               )}
@@ -2990,7 +4009,8 @@ export default function DashboardClient() {
                               {isAnalyticsAbTestsLoading ? (
                                 <Skeleton className="h-6 w-16 rounded-full" />
                               ) : (
-                                <div className="inline-flex items-center justify-center rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1 font-mono text-[9px] font-semibold text-[rgba(14,200,198,0.92)]">
+                                <div className="inline-flex items-center justify-center rounded-full border border-[rgba(14,124,123,0.35)] bg-[rgba(14,124,123,0.14)] px-3 py-1 font-mono text-[9px] font-semibold text-[rgba(14,200,198,0.92)]"
+                                  style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' } : undefined}>
                                   {test.confidence}%
                                 </div>
                               )}
@@ -3010,6 +4030,13 @@ export default function DashboardClient() {
                                       ? 'border-[rgba(14,124,123,0.4)] bg-[rgba(14,124,123,0.14)] text-[rgba(14,200,198,0.92)]'
                                       : 'border-[rgba(255,150,100,0.35)] bg-[rgba(255,150,100,0.12)] text-[rgba(255,180,120,0.88)]',
                                   ].join(' ')}
+                                  style={isLightTheme
+                                    ? test.status === 'complete'
+                                      ? { color: '#3a8f5a', borderColor: 'rgba(58,143,90,0.4)', background: 'rgba(58,143,90,0.1)' }
+                                      : test.status === 'running'
+                                      ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.4)', background: 'rgba(185,156,190,0.15)' }
+                                      : { color: '#b06030', borderColor: 'rgba(176,96,48,0.4)', background: 'rgba(176,96,48,0.1)' }
+                                    : undefined}
                                 >
                                   {test.status === 'complete' ? 'Complete' : test.status === 'running' ? 'Running' : 'Too Early'}
                                 </span>
@@ -3023,19 +4050,28 @@ export default function DashboardClient() {
                 </GlassCard>
 
                 {/* A/B Tests Summary */}
-                <div className="mt-4 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]">
-                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide">
+                <div className="mt-4 px-4 py-3 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)]"
+                  style={isLightTheme ? { background: 'rgba(185,156,190,0.1)', borderColor: 'rgba(164,131,174,0.18)' } : undefined}>
+                  <div className="font-mono text-[9px] text-[rgba(255,255,255,0.35)] tracking-wide"
+                    style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                     {isAnalyticsAbTestsLoading ? (
                       <Skeleton className="h-3 w-full" />
                     ) : (
                       <>
-                        <span className="text-[rgba(14,200,198,0.75)]">✓ 1</span> test completed
-                        <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                        <span className="text-[rgba(14,200,198,0.75)]">3</span> currently running
-                        <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                        <span className="text-[rgba(255,180,120,0.75)]">1</span> awaiting more data
-                        <span className="mx-2 text-[rgba(255,255,255,0.15)]">|</span>
-                        <span className="text-[rgba(255,255,255,0.25)]">Avg sample size: 2.4K per variant</span>
+                        <span className="text-[rgba(14,200,198,0.75)]"
+                          style={isLightTheme ? { color: '#8F6B97' } : undefined}>✓ 1</span> test completed
+                        <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                          style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                        <span className="text-[rgba(14,200,198,0.75)]"
+                          style={isLightTheme ? { color: '#8F6B97' } : undefined}>3</span> currently running
+                        <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                          style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                        <span className="text-[rgba(255,180,120,0.75)]"
+                          style={isLightTheme ? { color: '#b06030' } : undefined}>1</span> awaiting more data
+                        <span className="mx-2 text-[rgba(255,255,255,0.15)]"
+                          style={isLightTheme ? { color: '#D4B8D9' } : undefined}>|</span>
+                        <span className="text-[rgba(255,255,255,0.25)]"
+                          style={isLightTheme ? { color: '#A483AE' } : undefined}>Avg sample size: 2.4K per variant</span>
                       </>
                     )}
                   </div>
@@ -3046,18 +4082,34 @@ export default function DashboardClient() {
             {activeTab === 'content' && activeContentLever === 'kb' && (
               <div>
                 {kbDocuments.length === 0 ? (
-                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
-                      Knowledge Base is empty. Upload your first document to start training.
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center"
+                    style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.25)' } : undefined}>
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
+                      Knowledge Base Is Empty
                     </div>
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)] mb-5"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
+                      Upload your first document to start training content and research agents.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowKbUpload(true)}
+                      className="inline-flex items-center gap-2 rounded-full font-mono text-[11px] tracking-[1px] text-[rgba(14,200,198,0.95)] hover:bg-[rgba(14,200,198,0.12)] transition-colors"
+                      style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.45)', background: 'transparent', padding: '8px 22px', border: '1px solid' } : { border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
+                    >
+                      + Upload Document
+                    </button>
                   </GlassCard>
                 ) : null}
 
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Knowledge Base
                   </div>
-                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]">
+                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]"
+                    style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.6)', background: 'rgba(185,156,190,0.2)', boxShadow: '0 0 14px rgba(143,107,151,0.25), 0 0 28px rgba(143,107,151,0.12), inset 0 1px 0 rgba(143,107,151,0.15)' } : undefined}>
                     {kbDocuments.length} Documents
                   </div>
                 </div>
@@ -3067,42 +4119,57 @@ export default function DashboardClient() {
                     <GlassCard
                       key={doc.id}
                       className="flex flex-col px-5 py-4 rounded-2xl border-[rgba(255,255,255,0.1)] shadow-[0_8px_24px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.1)]"
-                      style={{ background: 'linear-gradient(160deg, #0c1424 0%, #060c18 100%)' }}
+                      style={isLightTheme
+                        ? {
+                            background: 'rgba(248,242,252,0.75)',
+                            borderColor: 'rgba(164,131,174,0.2)',
+                            boxShadow: '0 8px 18px rgba(143,107,151,0.08), inset 0 1px 0 rgba(255,255,255,0.65)',
+                          }
+                        : { background: 'linear-gradient(160deg, #0c1424 0%, #060c18 100%)' }}
                     >
                       {/* Category label */}
                       <div className={[
                         'font-mono text-[9px] tracking-[2px] uppercase mb-2.5 font-medium',
                         kbCategoryToneClass[doc.category],
-                      ].join(' ')}>
+                      ].join(' ')} style={isLightTheme ? { color: '#9A6FA8' } : undefined}>
                         {contentCategoryLabel[doc.category]}
                       </div>
 
                       {/* Title */}
-                      <div className="font-[Rajdhani,sans-serif] text-[19px] leading-[1.18] font-bold text-[rgba(236,245,255,0.96)] mb-2 tracking-[0.1px]">
+                      <div className="font-[Rajdhani,sans-serif] text-[19px] leading-[1.18] font-bold text-[rgba(236,245,255,0.96)] mb-2 tracking-[0.1px]"
+                        style={isLightTheme ? { color: '#6B4F72' } : undefined}>
                         {doc.title}
                       </div>
 
                       {/* Metadata */}
-                      <div className="flex items-center gap-1 font-mono text-[10px] text-[rgba(200,220,245,0.5)] mb-4">
+                      <div className="flex items-center gap-1 font-mono text-[10px] text-[rgba(200,220,245,0.5)] mb-4"
+                        style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                         <span>{doc.words}</span>
-                        <span className="mx-1 text-[rgba(255,255,255,0.3)] select-none">·</span>
+                        <span className="mx-1 text-[rgba(255,255,255,0.3)] select-none" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                         <span>{doc.updated}</span>
                       </div>
 
                       {/* Actions */}
                       <div className="mt-auto flex items-center gap-2">
-                        <button className="rounded-full border border-[rgba(210,228,255,0.32)] bg-[rgba(210,228,255,0.07)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.82)] hover:bg-[rgba(210,228,255,0.14)] hover:text-white hover:border-[rgba(210,228,255,0.5)] transition-all duration-150">
+                        <button
+                          onClick={() => { void handleViewKbDoc(doc.id); }}
+                          disabled={viewKbDocLoading}
+                          className="rounded-full border border-[rgba(210,228,255,0.32)] bg-[rgba(210,228,255,0.07)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.82)] hover:bg-[rgba(210,228,255,0.14)] hover:text-white hover:border-[rgba(210,228,255,0.5)] disabled:opacity-40 transition-all duration-150"
+                          style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.35)', background: 'rgba(185,156,190,0.08)' } : undefined}>
                           View
                         </button>
                         <button
+                          onClick={() => { void handleRetrainKbDoc(doc.id, doc.title); }}
+                          disabled={retrainLoadingDocId === doc.id}
                           className={[
-                            'rounded-full border px-4 py-1.5 text-[11px] font-semibold transition-all duration-150',
+                            'rounded-full border px-4 py-1.5 text-[11px] font-semibold transition-all duration-150 disabled:opacity-40',
                             doc.actionLabel === 'Edit'
                               ? 'border-[rgba(214,174,62,0.55)] bg-[rgba(214,174,62,0.18)] text-[rgba(255,212,96,0.97)] hover:bg-[rgba(214,174,62,0.3)] hover:border-[rgba(214,174,62,0.75)]'
                               : 'border-[rgba(14,200,198,0.5)] bg-[rgba(14,160,156,0.22)] text-[rgba(24,222,220,0.97)] hover:bg-[rgba(14,160,156,0.38)] hover:border-[rgba(14,200,198,0.72)]',
                           ].join(' ')}
+                          style={isLightTheme && doc.actionLabel !== 'Edit' ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.45)', background: 'rgba(185,156,190,0.15)' } : undefined}
                         >
-                          {doc.actionLabel}
+                          {retrainLoadingDocId === doc.id ? 'Working…' : doc.actionLabel}
                         </button>
                       </div>
                     </GlassCard>
@@ -3110,9 +4177,12 @@ export default function DashboardClient() {
 
                   <button
                     onClick={() => setShowKbUpload(true)}
-                    className="min-h-[128px] rounded-2xl border border-dashed border-[rgba(14,188,186,0.4)] bg-[rgba(2,18,28,0.72)] hover:bg-[rgba(3,28,40,0.82)] hover:border-[rgba(14,188,186,0.58)] transition-all duration-200 flex flex-col items-center justify-center text-center gap-2">
-                    <span className="text-[26px] leading-none text-[rgba(24,214,220,0.72)] font-light">+</span>
-                    <span className="font-mono text-[10px] tracking-[1.4px] text-[rgba(24,214,220,0.68)]">
+                    className="min-h-[128px] rounded-2xl border border-dashed border-[rgba(14,188,186,0.4)] bg-[rgba(2,18,28,0.72)] hover:bg-[rgba(3,28,40,0.82)] hover:border-[rgba(14,188,186,0.58)] transition-all duration-200 flex flex-col items-center justify-center text-center gap-2"
+                    style={isLightTheme ? { borderColor: 'rgba(143,107,151,0.35)', background: 'rgba(185,156,190,0.08)' } : undefined}>
+                    <span className="text-[26px] leading-none text-[rgba(24,214,220,0.72)] font-light"
+                      style={isLightTheme ? { color: '#9A6FA8' } : undefined}>+</span>
+                    <span className="font-mono text-[10px] tracking-[1.4px] text-[rgba(24,214,220,0.68)]"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                       Upload New Document
                     </span>
                   </button>
@@ -3120,56 +4190,243 @@ export default function DashboardClient() {
 
                 {/* KB Upload Modal */}
                 {showKbUpload && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.7)]">
-                    <div className="w-full max-w-md rounded-2xl border border-[rgba(14,200,198,0.28)] bg-[#080e18] p-6 shadow-[0_24px_64px_rgba(0,0,0,0.7)]">
-                      <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.7)] uppercase mb-4">Upload Document</div>
-                      <div className="space-y-3">
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.72)] backdrop-blur-sm"
+                    onClick={e => { if (e.target === e.currentTarget) { setShowKbUpload(false); setKbUploadTitle(''); setKbUploadContent(''); setKbFileName(null); } }}>
+                    <div
+                      className="w-full max-w-lg rounded-2xl border shadow-[0_32px_80px_rgba(0,0,0,0.75)] overflow-hidden"
+                      style={isLightTheme
+                        ? { background: 'rgba(252,248,255,0.98)', borderColor: 'rgba(143,107,151,0.35)', boxShadow: '0 32px 80px rgba(100,60,120,0.18)' }
+                        : { background: '#07101e', borderColor: 'rgba(14,200,198,0.25)' }}
+                    >
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-6 py-4 border-b"
+                        style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.2)' } : { borderColor: 'rgba(255,255,255,0.07)' }}>
                         <div>
-                          <label className="block font-mono text-[9px] text-[rgba(255,255,255,0.4)] mb-1">TITLE</label>
+                          <div className="font-mono text-[9px] tracking-[3px] uppercase mb-0.5"
+                            style={isLightTheme ? { color: '#9A6FA8' } : { color: 'rgba(14,200,198,0.65)' }}>
+                            Knowledge Base
+                          </div>
+                          <div className="font-[Rajdhani,sans-serif] text-[17px] font-bold"
+                            style={isLightTheme ? { color: '#4A3356' } : { color: 'rgba(230,242,255,0.95)' }}>
+                            Upload Document
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => { setShowKbUpload(false); setKbUploadTitle(''); setKbUploadContent(''); setKbFileName(null); }}
+                          className="w-8 h-8 rounded-full flex items-center justify-center transition-colors text-lg leading-none"
+                          style={isLightTheme
+                            ? { color: '#9A6FA8', background: 'rgba(143,107,151,0.1)' }
+                            : { color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.06)' }}>
+                          ×
+                        </button>
+                      </div>
+
+                      {/* Body */}
+                      <div className="px-6 py-5 space-y-4">
+                        {/* File drop zone */}
+                        <div>
+                          <label className="block font-mono text-[9px] tracking-[1.8px] uppercase mb-1.5"
+                            style={isLightTheme ? { color: '#A483AE' } : { color: 'rgba(255,255,255,0.38)' }}>
+                            File <span className="normal-case tracking-normal opacity-60">(PDF, TXT, MD, CSV — max 10 MB)</span>
+                          </label>
+                          <label
+                            className="flex items-center gap-3 w-full rounded-xl px-4 py-3 border border-dashed cursor-pointer transition-all duration-150"
+                            style={isLightTheme
+                              ? { background: 'rgba(143,107,151,0.05)', borderColor: kbFileName ? 'rgba(143,107,151,0.5)' : 'rgba(143,107,151,0.22)', color: '#7A5888' }
+                              : { background: 'rgba(255,255,255,0.03)', borderColor: kbFileName ? 'rgba(14,200,198,0.5)' : 'rgba(255,255,255,0.12)', color: 'rgba(14,200,198,0.75)' }}
+                          >
+                            <input
+                              type="file"
+                              accept=".pdf,.txt,.md,.csv"
+                              className="hidden"
+                              onChange={async e => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setKbFileLoading(true);
+                                setKbFileName(file.name);
+                                try {
+                                  if (file.name.match(/\.(txt|md|csv)$/i)) {
+                                    const text = await file.text();
+                                    setKbUploadContent(text.trim());
+                                    if (!kbUploadTitle.trim()) setKbUploadTitle(file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '));
+                                  } else {
+                                    const fd = new FormData();
+                                    fd.append('file', file);
+                                    const res = await fetch('/api/kb/parse-file', { method: 'POST', body: fd });
+                                    if (!res.ok) {
+                                      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+                                      throw new Error(err?.error ?? 'Failed to parse file');
+                                    }
+                                    const data = (await res.json()) as { text: string; filename: string };
+                                    setKbUploadContent(data.text);
+                                    if (!kbUploadTitle.trim()) setKbUploadTitle(file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '));
+                                  }
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : 'Failed to read file');
+                                  setKbFileName(null);
+                                } finally {
+                                  setKbFileLoading(false);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                            {kbFileLoading ? (
+                              <span className="font-mono text-[11px] opacity-60">Extracting text…</span>
+                            ) : kbFileName ? (
+                              <>
+                                <span className="text-base">&#128196;</span>
+                                <span className="font-mono text-[11px] flex-1 truncate">{kbFileName}</span>
+                                <span className="font-mono text-[9px] px-2 py-0.5 rounded-full"
+                                  style={isLightTheme ? { background: 'rgba(143,107,151,0.15)', color: '#7A5888' } : { background: 'rgba(14,200,198,0.15)', color: 'rgba(14,200,198,0.9)' }}>
+                                  Extracted ✓
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-base opacity-50">📎</span>
+                                <span className="font-mono text-[11px] opacity-55">Choose file or paste content below…</span>
+                              </>
+                            )}
+                          </label>
+                        </div>
+
+                        {/* Title field */}
+                        <div>
+                          <label className="block font-mono text-[9px] tracking-[1.8px] uppercase mb-1.5"
+                            style={isLightTheme ? { color: '#A483AE' } : { color: 'rgba(255,255,255,0.38)' }}>
+                            Title
+                          </label>
                           <input
                             type="text"
                             value={kbUploadTitle}
                             onChange={e => setKbUploadTitle(e.target.value)}
-                            placeholder="Document title…"
-                            className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
+                            placeholder="e.g. Brand Voice Guidelines 2026"
+                            className="w-full rounded-xl px-3.5 py-2.5 font-mono text-[12px] focus:outline-none transition-colors"
+                            style={isLightTheme
+                              ? { background: 'rgba(143,107,151,0.07)', border: '1px solid rgba(143,107,151,0.25)', color: '#3D2B4A', '::placeholder': 'rgba(143,107,151,0.45)' } as React.CSSProperties
+                              : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(230,242,255,0.9)' }}
                           />
                         </div>
+
+                        {/* Category pill buttons */}
                         <div>
-                          <label className="block font-mono text-[9px] text-[rgba(255,255,255,0.4)] mb-1">CATEGORY</label>
-                          <select
-                            value={kbUploadCategory}
-                            onChange={e => setKbUploadCategory(e.target.value as typeof kbUploadCategory)}
-                            className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                          >
-                            <option value="product-docs">Product Docs</option>
-                            <option value="brand">Brand</option>
-                            <option value="competitor-intel">Competitor Intel</option>
-                          </select>
+                          <label className="block font-mono text-[9px] tracking-[1.8px] uppercase mb-2"
+                            style={isLightTheme ? { color: '#A483AE' } : { color: 'rgba(255,255,255,0.38)' }}>
+                            Category
+                          </label>
+                          <div className="flex gap-2">
+                            {([
+                              { value: 'product-docs', label: 'Product Docs', icon: '📄' },
+                              { value: 'brand',        label: 'Brand',        icon: '✦' },
+                              { value: 'competitor-intel', label: 'Competitor', icon: '🔍' },
+                            ] as { value: typeof kbUploadCategory; label: string; icon: string }[]).map(opt => {
+                              const active = kbUploadCategory === opt.value;
+                              return (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() => setKbUploadCategory(opt.value)}
+                                  className="flex-1 rounded-xl py-2 px-2 font-mono text-[10px] font-semibold transition-all duration-150 border flex items-center justify-center gap-1.5"
+                                  style={isLightTheme
+                                    ? active
+                                      ? { background: 'rgba(143,107,151,0.2)', borderColor: 'rgba(143,107,151,0.55)', color: '#6B3F7A' }
+                                      : { background: 'rgba(143,107,151,0.05)', borderColor: 'rgba(143,107,151,0.15)', color: '#A483AE' }
+                                    : active
+                                      ? { background: 'rgba(14,124,123,0.25)', borderColor: 'rgba(14,200,198,0.55)', color: 'rgba(14,220,218,0.97)' }
+                                      : { background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }
+                                  }
+                                >
+                                  <span>{opt.icon}</span>
+                                  <span>{opt.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
+
+                        {/* Content textarea */}
                         <div>
-                          <label className="block font-mono text-[9px] text-[rgba(255,255,255,0.4)] mb-1">CONTENT</label>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="font-mono text-[9px] tracking-[1.8px] uppercase"
+                              style={isLightTheme ? { color: '#A483AE' } : { color: 'rgba(255,255,255,0.38)' }}>
+                              Content
+                            </label>
+                            <span className="font-mono text-[9px]"
+                              style={isLightTheme ? { color: '#B99CBE' } : { color: 'rgba(255,255,255,0.25)' }}>
+                              {kbUploadContent.trim() ? kbUploadContent.trim().split(/\s+/).filter(Boolean).length.toLocaleString() + ' words' : '0 words'}
+                            </span>
+                          </div>
                           <textarea
                             value={kbUploadContent}
                             onChange={e => setKbUploadContent(e.target.value)}
-                            placeholder="Paste document content here…"
-                            rows={5}
-                            className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[11px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)] resize-none"
+                            placeholder="Paste document content here, or upload a file above…"
+                            rows={6}
+                            className="w-full rounded-xl px-3.5 py-2.5 font-mono text-[11px] leading-relaxed focus:outline-none transition-colors resize-none"
+                            style={isLightTheme
+                              ? { background: 'rgba(143,107,151,0.06)', border: '1px solid rgba(143,107,151,0.22)', color: '#3D2B4A' }
+                              : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(220,235,255,0.85)' }}
                           />
                         </div>
                       </div>
-                      <div className="flex gap-2 mt-5">
+
+                      {/* Footer */}
+                      <div className="flex gap-2.5 px-6 pb-5 pt-1">
                         <button
                           onClick={() => { void handleKbUpload(); }}
-                          disabled={kbUploadLoading}
-                          className="flex-1 rounded-full border border-[rgba(14,200,198,0.45)] bg-[rgba(14,124,123,0.3)] py-2 font-mono text-[11px] font-bold text-[rgba(14,200,198,1)] hover:bg-[rgba(14,124,123,0.5)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                          disabled={kbUploadLoading || kbFileLoading || !kbUploadTitle.trim() || !kbUploadContent.trim()}
+                          className="flex-1 rounded-xl py-2.5 font-mono text-[11px] font-bold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+                          style={isLightTheme
+                            ? { background: 'rgba(143,107,151,0.18)', border: '1px solid rgba(143,107,151,0.45)', color: '#6B3F7A' }
+                            : { background: 'rgba(14,124,123,0.35)', border: '1px solid rgba(14,200,198,0.5)', color: 'rgba(14,220,218,1)' }}
                         >
-                          {kbUploadLoading ? 'Uploading…' : 'Upload'}
+                          {kbUploadLoading ? 'Uploading…' : kbFileLoading ? 'Reading file…' : 'Upload Document'}
                         </button>
                         <button
-                          onClick={() => { setShowKbUpload(false); setKbUploadTitle(''); setKbUploadContent(''); }}
-                          className="flex-1 rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] py-2 font-mono text-[11px] text-[rgba(255,255,255,0.5)] hover:bg-[rgba(255,255,255,0.1)] transition-all"
+                          onClick={() => { setShowKbUpload(false); setKbUploadTitle(''); setKbUploadContent(''); setKbFileName(null); }}
+                          className="rounded-xl px-5 py-2.5 font-mono text-[11px] transition-all duration-150"
+                          style={isLightTheme
+                            ? { background: 'rgba(143,107,151,0.07)', border: '1px solid rgba(143,107,151,0.18)', color: '#9A6FA8' }
+                            : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.45)' }}
                         >
                           Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* KB View Doc Modal */}
+                {viewKbDocState && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-start justify-center bg-[rgba(0,0,0,0.78)] backdrop-blur-sm overflow-y-auto py-10 px-4"
+                    onClick={e => { if (e.target === e.currentTarget) setViewKbDocState(null); }}
+                  >
+                    <div className="w-full max-w-2xl flex flex-col rounded-2xl border border-[rgba(14,200,198,0.28)] bg-[#080e18] shadow-[0_24px_64px_rgba(0,0,0,0.7)] my-auto">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-[rgba(255,255,255,0.08)] flex-shrink-0">
+                        <div className="min-w-0 pr-4">
+                          <div className="font-mono text-[9px] tracking-[2px] uppercase text-[rgba(14,200,198,0.65)] mb-1">{viewKbDocState.category}</div>
+                          <div className="font-[Rajdhani,sans-serif] text-[18px] font-bold text-[rgba(236,245,255,0.95)] truncate">{viewKbDocState.name}</div>
+                        </div>
+                        <button
+                          onClick={() => setViewKbDocState(null)}
+                          className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-[rgba(255,255,255,0.4)] hover:text-white hover:bg-[rgba(255,255,255,0.08)] text-xl leading-none transition-all"
+                        >×</button>
+                      </div>
+                      {/* Scrollable content — capped at 60vh so it never fills the whole screen */}
+                      <div className="overflow-y-auto px-6 py-5" style={{ maxHeight: '60vh' }}>
+                        <pre className="font-mono text-[12px] text-[rgba(220,235,255,0.78)] whitespace-pre-wrap leading-relaxed break-words">{viewKbDocState.content}</pre>
+                      </div>
+                      {/* Footer */}
+                      <div className="px-6 pb-5 pt-3 border-t border-[rgba(255,255,255,0.08)] flex-shrink-0 flex items-center justify-between">
+                        <span className="font-mono text-[9px] text-[rgba(255,255,255,0.25)]">
+                          {viewKbDocState.content.trim().split(/\s+/).filter(Boolean).length.toLocaleString()} words
+                        </span>
+                        <button
+                          onClick={() => setViewKbDocState(null)}
+                          className="rounded-full border border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.05)] px-5 py-2 font-mono text-[11px] text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.1)] transition-all"
+                        >
+                          Close
                         </button>
                       </div>
                     </div>
@@ -3182,53 +4439,83 @@ export default function DashboardClient() {
               <div>
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Generated Social Posts
                   </div>
-                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]">
+                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]"
+                    style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.6)', background: 'rgba(185,156,190,0.2)', boxShadow: '0 0 14px rgba(143,107,151,0.25), 0 0 28px rgba(143,107,151,0.12), inset 0 1px 0 rgba(143,107,151,0.15)' } : undefined}>
                     Today: 28 Posts
                   </div>
                 </div>
 
                 {/* Post cards */}
                 <div className="flex flex-col gap-4">
-                  {SOCIAL_POSTS.map((post) => (
+                  {socialPosts.map((post) => (
                     <div
                       key={post.id}
                       className="rounded-2xl border border-[rgba(14,200,198,0.2)] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.07)]"
-                      style={{ background: '#080e18' }}
+                      style={isLightTheme ? { background: 'rgba(248,242,252,0.7)', borderColor: 'rgba(164,131,174,0.25)' } : { background: '#080e18' }}
                     >
                       {/* Card header strip */}
-                      <div className="flex items-center justify-between px-5 py-3 border-b border-[rgba(255,255,255,0.06)]">
+                      <div className="flex items-center justify-between px-5 py-3 border-b border-[rgba(255,255,255,0.06)]"
+                        style={isLightTheme ? { borderColor: 'rgba(164,131,174,0.18)' } : undefined}>
                         <div>
-                          <div className="font-mono text-[10px] tracking-[1.6px] text-[rgba(18,218,214,0.88)] mb-0.5">
+                          <div className="font-mono text-[10px] tracking-[1.6px] text-[rgba(18,218,214,0.88)] mb-0.5"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                             {post.channel}
-                            <span className="mx-1.5 text-[rgba(255,255,255,0.25)]">·</span>
+                            <span className="mx-1.5 text-[rgba(255,255,255,0.25)]" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                             {post.handle}
                           </div>
-                          <div className="font-mono text-[9px] text-[rgba(200,220,245,0.42)] tracking-[0.3px]">
+                          <div className="font-mono text-[9px] text-[rgba(200,220,245,0.42)] tracking-[0.3px]"
+                            style={isLightTheme ? { color: '#B99CBE' } : undefined}>
                             {post.generatedAgo}
                             {post.bias !== null && (
                               <>
-                                <span className="mx-1.5 text-[rgba(255,255,255,0.2)]">·</span>
+                                <span className="mx-1.5 text-[rgba(255,255,255,0.2)]" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                                 BIAS {post.bias}
                               </>
                             )}
                             {post.bias === null && (
                               <>
-                                <span className="mx-1.5 text-[rgba(255,255,255,0.2)]">·</span>
+                                <span className="mx-1.5 text-[rgba(255,255,255,0.2)]" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                                 No BIAS filter
                               </>
                             )}
-                            <span className="mx-1.5 text-[rgba(255,255,255,0.2)]">·</span>
+                            <span className="mx-1.5 text-[rgba(255,255,255,0.2)]" style={isLightTheme ? { color: '#D4B8D9' } : undefined}>·</span>
                             {post.model}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button className="rounded-full border border-[rgba(14,200,198,0.55)] bg-[rgba(14,160,156,0.28)] px-4 py-1.5 text-[11px] font-semibold text-[rgba(24,222,220,0.97)] hover:bg-[rgba(14,160,156,0.44)] hover:border-[rgba(14,200,198,0.78)] transition-all duration-150">
-                            {post.primaryAction}
-                          </button>
-                          <button className="rounded-full border border-[rgba(210,228,255,0.28)] bg-[rgba(210,228,255,0.06)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.75)] hover:bg-[rgba(210,228,255,0.13)] hover:text-white hover:border-[rgba(210,228,255,0.46)] transition-all duration-150">
+                          {post.status === 'posted' && (
+                            <span className="rounded-full border border-[rgba(30,165,80,0.45)] bg-[rgba(30,165,80,0.12)] px-3 py-1 text-[10px] font-mono uppercase tracking-[1.2px] text-[rgba(120,245,165,0.96)]">
+                              Posted
+                            </span>
+                          )}
+                          {post.status !== 'posted' && (
+                            <button
+                              onClick={() => { void handleSocialPrimaryAction(post); }}
+                              disabled={socialActionLoadingId === post.id}
+                              aria-busy={socialActionLoadingId === post.id}
+                              className="rounded-full border border-[rgba(14,200,198,0.55)] bg-[rgba(14,160,156,0.28)] px-4 py-1.5 text-[11px] font-semibold text-[rgba(24,222,220,0.97)] hover:bg-[rgba(14,160,156,0.44)] hover:border-[rgba(14,200,198,0.78)] transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-55"
+                              style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.5)', background: 'rgba(185,156,190,0.18)' } : undefined}
+                            >
+                              <span className="inline-flex items-center gap-2">
+                                {socialActionLoadingId === post.id && (
+                                  <span
+                                    aria-hidden="true"
+                                    className="h-3.5 w-3.5 rounded-full border border-current border-t-transparent animate-spin"
+                                  />
+                                )}
+                                {socialActionLoadingId === post.id ? 'Posting...' : post.primaryAction}
+                              </span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => openSocialEdit(post)}
+                            disabled={post.status === 'posted'}
+                            className="rounded-full border border-[rgba(210,228,255,0.28)] bg-[rgba(210,228,255,0.06)] px-4 py-1.5 text-[11px] font-medium text-[rgba(220,235,255,0.75)] hover:bg-[rgba(210,228,255,0.13)] hover:text-white hover:border-[rgba(210,228,255,0.46)] transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40"
+                            style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.35)', background: 'rgba(185,156,190,0.08)' } : undefined}>
                             {post.secondaryAction}
                           </button>
                         </div>
@@ -3237,10 +4524,11 @@ export default function DashboardClient() {
                       {/* Post body */}
                       <div
                         className="px-5 py-4 mx-4 my-3.5 rounded-xl border border-[rgba(255,255,255,0.06)] space-y-3"
-                        style={{ background: '#03060f' }}
+                        style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.18)' } : { background: '#03060f' }}
                       >
                         {post.body.map((line, i) => (
-                          <p key={i} className="font-mono text-[11px] leading-[1.7] text-[rgba(215,232,255,0.82)]">
+                          <p key={i} className="font-mono text-[11px] leading-[1.7] text-[rgba(215,232,255,0.82)]"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                             {line}
                           </p>
                         ))}
@@ -3255,22 +4543,24 @@ export default function DashboardClient() {
               <div>
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Blog Articles
                   </div>
-                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]">
-                    8 Published This Month
+                  <div className="rounded-full border border-[rgba(14,210,208,0.72)] bg-[rgba(4,62,72,0.72)] px-4 py-1.5 font-mono text-[11px] tracking-[0.6px] text-[rgba(24,228,226,0.97)] shadow-[0_0_14px_rgba(14,180,176,0.45),0_0_28px_rgba(14,180,176,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]"
+                    style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.6)', background: 'rgba(185,156,190,0.2)', boxShadow: '0 0 14px rgba(143,107,151,0.25), 0 0 28px rgba(143,107,151,0.12), inset 0 1px 0 rgba(143,107,151,0.15)' } : undefined}>
+                    {blogArticles.filter(a => a.published).length} Published This Month
                   </div>
                 </div>
 
                 {/* Table — native <table> so layout never collapses */}
                 <div
                   className="rounded-2xl border border-[rgba(255,255,255,0.08)] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
-                  style={{ background: '#080e18' }}
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', borderColor: 'rgba(164,131,174,0.2)' } : { background: '#080e18' }}
                 >
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                      <tr style={isLightTheme ? { borderBottom: '1px solid rgba(164,131,174,0.2)' } : { borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
                         {[
                           { label: 'TITLE',     width: 'auto' },
                           { label: 'WORDS',     width: '88px' },
@@ -3281,7 +4571,7 @@ export default function DashboardClient() {
                         ].map(({ label, width }) => (
                           <th
                             key={label}
-                            style={{ width, paddingLeft: label === 'TITLE' ? '20px' : undefined, paddingRight: label === 'ACTIONS' ? '20px' : undefined }}
+                            style={{ width, paddingLeft: label === 'TITLE' ? '20px' : undefined, paddingRight: label === 'ACTIONS' ? '20px' : undefined, color: isLightTheme ? '#A483AE' : undefined }}
                             className="py-3 text-left font-mono text-[8.5px] tracking-[1.6px] text-[rgba(255,255,255,0.3)] uppercase font-normal"
                           >
                             {label}
@@ -3290,18 +4580,27 @@ export default function DashboardClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {BLOG_ARTICLES.map((article, idx) => (
+                      {blogArticles.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-10 text-center font-mono text-[11px] text-[rgba(255,255,255,0.28)]"
+                            style={isLightTheme ? { color: '#B99CBE' } : undefined}>
+                            No blog articles yet. Approve a HITL queue item to generate the first entry.
+                          </td>
+                        </tr>
+                      ) : blogArticles.map((article, idx) => (
                         <tr
                           key={article.id}
-                          style={idx < BLOG_ARTICLES.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
+                          style={idx < blogArticles.length - 1 ? { borderBottom: isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.05)' } : undefined}
                         >
                           {/* Title */}
-                          <td className="py-4 pl-5 pr-4 text-[13px] font-medium leading-snug text-[rgba(225,238,255,0.92)]">
+                          <td className="py-4 pl-5 pr-4 text-[13px] font-medium leading-snug text-[rgba(225,238,255,0.92)]"
+                            style={isLightTheme ? { color: '#6B4F72' } : undefined}>
                             {article.title}
                           </td>
 
                           {/* Words */}
-                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]">
+                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                             {article.words}
                           </td>
 
@@ -3309,7 +4608,12 @@ export default function DashboardClient() {
                           <td className="py-4">
                             <span
                               className="inline-flex items-center rounded-full font-mono text-[10px] font-semibold"
-                              style={{
+                              style={isLightTheme ? {
+                                border: '1px solid rgba(143,107,151,0.45)',
+                                background: 'rgba(185,156,190,0.2)',
+                                color: '#8F6B97',
+                                padding: '2px 10px',
+                              } : {
                                 border: '1px solid rgba(14,200,198,0.45)',
                                 background: 'rgba(14,100,98,0.32)',
                                 color: 'rgba(24,222,220,0.95)',
@@ -3321,22 +4625,29 @@ export default function DashboardClient() {
                           </td>
 
                           {/* Published */}
-                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]">
+                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
                             {article.published ?? (
-                              <span style={{ color: 'rgba(255,200,100,0.8)' }}>In Progress</span>
+                              <span style={isLightTheme ? { color: '#b06030' } : { color: 'rgba(255,200,100,0.8)' }}>In Progress</span>
                             )}
                           </td>
 
                           {/* Visits */}
-                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]">
-                            {article.visits ?? <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>}
+                          <td className="py-4 font-mono text-[11px] text-[rgba(200,220,245,0.55)]"
+                            style={isLightTheme ? { color: '#8F6B97' } : undefined}>
+                            {article.visits ?? <span style={isLightTheme ? { color: '#D4B8D9' } : { color: 'rgba(255,255,255,0.2)' }}>—</span>}
                           </td>
 
                           {/* Action */}
                           <td className="py-4 pr-5">
                             <button
                               className="rounded-full font-mono text-[11px] font-medium transition-all duration-150"
-                              style={{
+                              style={isLightTheme ? {
+                                border: '1px solid rgba(143,107,151,0.35)',
+                                background: 'rgba(185,156,190,0.08)',
+                                color: '#8F6B97',
+                                padding: '4px 14px',
+                              } : {
                                 border: '1px solid rgba(210,228,255,0.28)',
                                 background: 'rgba(210,228,255,0.06)',
                                 color: 'rgba(220,235,255,0.78)',
@@ -3356,23 +4667,61 @@ export default function DashboardClient() {
 
             {activeTab === 'contacts' && activeContactsLever === 'all' && (
               <div>
-                {contacts.length === 0 ? (
-                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
-                      No contacts are available for this tenant yet.
+                {contacts.length === 0 && dashboardLoadState !== 'loading' ? (
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center"
+                    style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.25)' } : undefined}>
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
+                      No Contacts Synced
                     </div>
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)] mb-5"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
+                      {hubspotConnected
+                        ? 'HubSpot is connected, but no contacts were returned yet. Trigger a new sync or verify HubSpot contact visibility/scopes.'
+                        : 'Connect HubSpot to automatically sync and enrich your contacts.'}
+                    </div>
+                    {hubspotConnected ? (
+                      <button
+                        type="button"
+                        onClick={() => { void refreshDashboardData(true); }}
+                        className="inline-flex items-center gap-2 rounded-full font-mono text-[11px] tracking-[1px] text-[rgba(14,200,198,0.95)] hover:bg-[rgba(14,200,198,0.12)] transition-colors"
+                        style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.45)', background: 'transparent', padding: '8px 22px', border: '1px solid' } : { border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
+                      >
+                        ↻ Retry Sync
+                      </button>
+                    ) : (
+                      <a
+                        href="/api/hubspot/auth"
+                        className="inline-flex items-center gap-2 rounded-full font-mono text-[11px] tracking-[1px] text-[rgba(14,200,198,0.95)] hover:bg-[rgba(14,200,198,0.12)] transition-colors"
+                        style={isLightTheme ? { color: '#8F6B97', borderColor: 'rgba(143,107,151,0.45)', background: 'transparent', padding: '8px 22px', border: '1px solid' } : { border: '1px solid rgba(14,200,198,0.45)', padding: '8px 22px' }}
+                      >
+                        🔵 Connect HubSpot
+                      </a>
+                    )}
                   </GlassCard>
+                ) : contacts.length === 0 && dashboardLoadState === 'loading' ? (
+                  <div className="space-y-2 mb-6">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Skeleton key={i} className="h-14 rounded-xl" />
+                    ))}
+                  </div>
                 ) : null}
 
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     All Contacts
                   </div>
                   {/* Plain white-border pill — matches reference exactly (no teal glow) */}
                   <div
                     className="rounded-full font-mono text-[11px] tracking-[0.5px] text-[rgba(230,242,255,0.92)]"
-                    style={{
+                    style={isLightTheme ? {
+                      border: '1px solid rgba(143,107,151,0.4)',
+                      background: 'rgba(185,156,190,0.12)',
+                      padding: '6px 18px',
+                      color: '#8F6B97',
+                    } : {
                       border: '1px solid rgba(220,235,255,0.38)',
                       background: 'rgba(220,235,255,0.06)',
                       padding: '6px 18px',
@@ -3385,11 +4734,11 @@ export default function DashboardClient() {
                 {/* Table */}
                 <div
                   className="rounded-2xl overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
-                  style={{ background: '#080e18', border: '1px solid rgba(255,255,255,0.08)' }}
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', border: '1px solid rgba(164,131,174,0.2)' } : { background: '#080e18', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <tr style={isLightTheme ? { borderBottom: '1px solid rgba(164,131,174,0.2)' } : { borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                         {['NAME', 'COMPANY', 'STAGE', 'LEAD SCORE', 'LAST ENRICHED', 'RISK'].map((col) => (
                           <th
                             key={col}
@@ -3398,6 +4747,7 @@ export default function DashboardClient() {
                               padding: '14px 12px',
                               paddingLeft: col === 'NAME' ? '24px' : '12px',
                               paddingRight: col === 'RISK' ? '24px' : '12px',
+                              color: isLightTheme ? '#A483AE' : undefined,
                             }}
                           >
                             {col}
@@ -3409,12 +4759,12 @@ export default function DashboardClient() {
                       {contacts.map((contact, idx) => (
                         <tr
                           key={contact.id}
-                          style={idx < contacts.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
+                          style={idx < contacts.length - 1 ? { borderBottom: isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.05)' } : undefined}
                         >
                           {/* Name */}
                           <td
                             className="text-[15px] font-bold text-[rgba(235,245,255,0.96)] whitespace-nowrap"
-                            style={{ padding: '18px 12px 18px 24px' }}
+                            style={{ padding: '18px 12px 18px 24px', color: isLightTheme ? '#6B4F72' : undefined }}
                           >
                             {contact.name}
                           </td>
@@ -3422,7 +4772,7 @@ export default function DashboardClient() {
                           {/* Company */}
                           <td
                             className="text-[13px] text-[rgba(190,210,240,0.52)] whitespace-nowrap"
-                            style={{ padding: '18px 12px' }}
+                            style={{ padding: '18px 12px', color: isLightTheme ? '#8F6B97' : undefined }}
                           >
                             {contact.company}
                           </td>
@@ -3441,7 +4791,13 @@ export default function DashboardClient() {
                           <td style={{ padding: '18px 12px' }}>
                             <span
                               className="inline-flex items-center justify-center rounded-full font-mono text-[12px] font-bold"
-                              style={{
+                              style={isLightTheme ? {
+                                width: '40px',
+                                height: '40px',
+                                border: '1px solid rgba(143,107,151,0.45)',
+                                background: 'rgba(185,156,190,0.2)',
+                                color: '#8F6B97',
+                              } : {
                                 width: '40px',
                                 height: '40px',
                                 border: '1px solid rgba(14,200,198,0.5)',
@@ -3456,7 +4812,7 @@ export default function DashboardClient() {
                           {/* Last Enriched */}
                           <td
                             className="text-[13px] text-[rgba(190,210,240,0.52)]"
-                            style={{ padding: '18px 12px' }}
+                            style={{ padding: '18px 12px', color: isLightTheme ? '#8F6B97' : undefined }}
                           >
                             {contact.lastEnriched}
                           </td>
@@ -3471,7 +4827,7 @@ export default function DashboardClient() {
                                 {contact.risk}{contact.risk === 'High' && <span style={{ marginLeft: '4px' }}>⚠</span>}
                               </span>
                             ) : (
-                              <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>
+                              <span style={isLightTheme ? { color: '#D4B8D9' } : { color: 'rgba(255,255,255,0.2)' }}>—</span>
                             )}
                           </td>
                         </tr>
@@ -3482,12 +4838,12 @@ export default function DashboardClient() {
                   {/* Footer */}
                   <div
                     className="text-center font-mono text-[11px] text-[rgba(255,255,255,0.28)]"
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '14px 20px' }}
+                    style={isLightTheme ? { borderTop: '1px solid rgba(164,131,174,0.18)', padding: '14px 20px', color: '#B99CBE' } : { borderTop: '1px solid rgba(255,255,255,0.06)', padding: '14px 20px' }}
                   >
                     Showing {contacts.length} of {contactsSummary.totalSynced} contacts · Enriched by{' '}
-                    <span style={{ color: 'rgba(24,218,214,0.88)' }}>lead_qualifier</span>
+                    <span style={isLightTheme ? { color: '#9A6FA8' } : { color: 'rgba(24,218,214,0.88)' }}>lead_qualifier</span>
                     {' & '}
-                    <span style={{ color: 'rgba(24,218,214,0.88)' }}>churn_predictor</span>
+                    <span style={isLightTheme ? { color: '#9A6FA8' } : { color: 'rgba(24,218,214,0.88)' }}>churn_predictor</span>
                   </div>
                 </div>
               </div>
@@ -3496,21 +4852,34 @@ export default function DashboardClient() {
             {activeTab === 'contacts' && activeContactsLever === 'pipeline' && (
               <div>
                 {pipelineCols.length === 0 ? (
-                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
-                      Pipeline data is not available.
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(214,174,62,0.3)] bg-[rgba(90,62,10,0.18)] text-center"
+                    style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.25)' } : undefined}>
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(255,210,90,0.72)] uppercase mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
+                      No Pipeline Data
+                    </div>
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)]"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
+                      Pipeline stages will appear after contacts are synced and classified.
                     </div>
                   </GlassCard>
                 ) : null}
 
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Sales Pipeline
                   </div>
                   <div
                     className="rounded-full font-mono text-[11px] tracking-[0.5px]"
-                    style={{
+                    style={isLightTheme ? {
+                      border: '1px solid rgba(143,107,151,0.6)',
+                      background: 'rgba(185,156,190,0.2)',
+                      color: '#8F6B97',
+                      padding: '6px 18px',
+                      boxShadow: '0 0 14px rgba(143,107,151,0.25), inset 0 1px 0 rgba(143,107,151,0.15)',
+                    } : {
                       border: '1px solid rgba(214,174,62,0.6)',
                       background: 'rgba(90,62,10,0.55)',
                       color: 'rgba(255,210,90,0.97)',
@@ -3528,18 +4897,22 @@ export default function DashboardClient() {
                     <div
                       key={col.stage}
                       className="rounded-2xl overflow-hidden"
-                      style={{
+                      style={isLightTheme ? {
+                        background: 'rgba(248,242,252,0.6)',
+                        border: `1px solid rgba(164,131,174,0.2)`,
+                        boxShadow: 'none',
+                      } : {
                         background: '#080e18',
                         border: `1px solid ${col.borderColor}`,
                         boxShadow: col.glow,
                       }}
                     >
                       {/* Column header */}
-                      <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div className="font-mono text-[9px] tracking-[2px] uppercase mb-2" style={{ color: col.headerColor }}>
+                      <div style={isLightTheme ? { padding: '14px 16px 10px', borderBottom: '1px solid rgba(164,131,174,0.18)' } : { padding: '14px 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        <div className="font-mono text-[9px] tracking-[2px] uppercase mb-2" style={isLightTheme ? { color: '#A483AE' } : { color: col.headerColor }}>
                           {col.stage} · {col.count}
                         </div>
-                        <div className="font-bold text-[22px] leading-none" style={{ color: col.valueColor }}>
+                        <div className="font-bold text-[22px] leading-none" style={isLightTheme ? { color: '#8F6B97' } : { color: col.valueColor }}>
                           {col.value}
                         </div>
                       </div>
@@ -3552,12 +4925,12 @@ export default function DashboardClient() {
                             className="font-mono text-[10px]"
                             style={{
                               padding: '7px 16px',
-                              color: 'rgba(190,215,245,0.65)',
-                              borderBottom: i < col.leads.length - 1 ? '1px solid rgba(255,255,255,0.04)' : undefined,
+                              color: isLightTheme ? '#8F6B97' : 'rgba(190,215,245,0.65)',
+                              borderBottom: i < col.leads.length - 1 ? isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.04)' : undefined,
                             }}
                           >
                             {lead.company}
-                            <span style={{ color: 'rgba(255,255,255,0.28)', margin: '0 5px' }}>·</span>
+                            <span style={isLightTheme ? { color: '#D4B8D9', margin: '0 5px' } : { color: 'rgba(255,255,255,0.28)', margin: '0 5px' }}>·</span>
                             Score {lead.score}
                           </div>
                         ))}
@@ -3568,8 +4941,8 @@ export default function DashboardClient() {
                         className="font-mono text-[9px] text-center"
                         style={{
                           padding: '8px 16px 12px',
-                          color: 'rgba(255,255,255,0.25)',
-                          borderTop: '1px solid rgba(255,255,255,0.04)',
+                          color: isLightTheme ? '#B99CBE' : 'rgba(255,255,255,0.25)',
+                          borderTop: isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.04)',
                         }}
                       >
                         +{col.more} more
@@ -3583,21 +4956,34 @@ export default function DashboardClient() {
             {activeTab === 'contacts' && activeContactsLever === 'segments' && (
               <div>
                 {segments.length === 0 ? (
-                  <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
-                    <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
-                      No active segments found.
+                  <GlassCard className="mb-6 px-6 py-8 border-[rgba(14,200,198,0.18)] bg-[rgba(14,124,123,0.07)] text-center"
+                    style={isLightTheme ? { background: 'rgba(185,156,190,0.12)', borderColor: 'rgba(164,131,174,0.25)' } : undefined}>
+                    <div className="font-mono text-[10px] tracking-[3px] text-[rgba(14,200,198,0.6)] uppercase mb-2"
+                      style={isLightTheme ? { color: '#8F6B97' } : undefined}>
+                      No Segments Yet
+                    </div>
+                    <div className="text-[13px] text-[rgba(200,220,245,0.55)]"
+                      style={isLightTheme ? { color: '#B99CBE' } : undefined}>
+                      Segments are created automatically from live contact attributes and agent scoring.
                     </div>
                   </GlassCard>
                 ) : null}
 
                 {/* Header */}
                 <div className="mb-5 flex items-center justify-between">
-                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase">
+                  <div className="font-mono text-[9px] tracking-[3.6px] text-[rgba(255,255,255,0.35)] uppercase"
+                    style={isLightTheme ? { color: '#A483AE' } : undefined}>
                     Segments
                   </div>
                   <div
                     className="rounded-full font-mono text-[11px] tracking-[0.6px]"
-                    style={{
+                    style={isLightTheme ? {
+                      border: '1px solid rgba(143,107,151,0.6)',
+                      background: 'rgba(185,156,190,0.2)',
+                      color: '#8F6B97',
+                      padding: '6px 18px',
+                      boxShadow: '0 0 14px rgba(143,107,151,0.25), 0 0 28px rgba(143,107,151,0.12), inset 0 1px 0 rgba(143,107,151,0.15)',
+                    } : {
                       border: '1px solid rgba(14,210,208,0.72)',
                       background: 'rgba(4,62,72,0.72)',
                       color: 'rgba(24,228,226,0.97)',
@@ -3612,17 +4998,17 @@ export default function DashboardClient() {
                 {/* Table */}
                 <div
                   className="rounded-2xl overflow-hidden"
-                  style={{ background: '#080e18', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}
+                  style={isLightTheme ? { background: 'rgba(248,242,252,0.6)', border: '1px solid rgba(164,131,174,0.2)', boxShadow: 'none' } : { background: '#080e18', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}
                 >
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <tr style={isLightTheme ? { borderBottom: '1px solid rgba(164,131,174,0.2)' } : { borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                         {['SEGMENT', 'CONTACTS', 'CRITERIA', 'LAST UPDATED', 'ACTIONS'].map((col) => (
                           <th
                             key={col}
                             className="text-left font-mono text-[8.5px] tracking-[2px] uppercase font-normal"
                             style={{
-                              color: 'rgba(255,255,255,0.28)',
+                              color: isLightTheme ? '#A483AE' : 'rgba(255,255,255,0.28)',
                               padding: '14px 14px',
                               paddingLeft: col === 'SEGMENT' ? '24px' : '14px',
                               paddingRight: col === 'ACTIONS' ? '24px' : '14px',
@@ -3637,25 +5023,25 @@ export default function DashboardClient() {
                       {segments.map((seg, idx) => (
                         <tr
                           key={seg.id}
-                          style={idx < segments.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : undefined}
+                          style={idx < segments.length - 1 ? { borderBottom: isLightTheme ? '1px solid rgba(164,131,174,0.12)' : '1px solid rgba(255,255,255,0.05)' } : undefined}
                         >
                           {/* Segment name */}
-                          <td style={{ padding: '16px 14px 16px 24px', fontSize: '13px', fontWeight: 600, color: 'rgba(230,242,255,0.94)', whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '16px 14px 16px 24px', fontSize: '13px', fontWeight: 600, color: isLightTheme ? '#6B4F72' : 'rgba(230,242,255,0.94)', whiteSpace: 'nowrap' }}>
                             {seg.name}
                           </td>
 
                           {/* Contacts count */}
-                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '13px', fontWeight: 700, color: seg.contactsAlert ? 'rgba(240,80,80,0.95)' : 'rgba(200,220,245,0.75)' }}>
+                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '13px', fontWeight: 700, color: isLightTheme ? '#8F6B97' : seg.contactsAlert ? 'rgba(240,80,80,0.95)' : 'rgba(200,220,245,0.75)' }}>
                             {seg.contacts}
                           </td>
 
                           {/* Criteria */}
-                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '11px', color: 'rgba(190,210,240,0.5)' }}>
+                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '11px', color: isLightTheme ? '#8F6B97' : 'rgba(190,210,240,0.5)' }}>
                             {seg.criteria}
                           </td>
 
                           {/* Last updated */}
-                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '11px', color: 'rgba(190,210,240,0.5)' }}>
+                          <td style={{ padding: '16px 14px', fontFamily: 'monospace', fontSize: '11px', color: isLightTheme ? '#8F6B97' : 'rgba(190,210,240,0.5)' }}>
                             {seg.lastUpdated}
                           </td>
 
@@ -3663,7 +5049,12 @@ export default function DashboardClient() {
                           <td style={{ padding: '16px 24px 16px 14px' }}>
                             <button
                               className="rounded-full font-mono text-[11px] font-semibold transition-all duration-150"
-                              style={seg.actionVariant === 'gold'
+                              style={isLightTheme ? {
+                                border: '1px solid rgba(143,107,151,0.35)',
+                                background: 'rgba(185,156,190,0.08)',
+                                color: '#8F6B97',
+                                padding: '6px 16px',
+                              } : seg.actionVariant === 'gold'
                                 ? { border: '1px solid rgba(214,174,62,0.55)', background: 'rgba(214,174,62,0.18)', color: 'rgba(255,210,90,0.97)', padding: '6px 16px' }
                                 : { border: '1px solid rgba(14,200,198,0.5)', background: 'rgba(14,160,156,0.22)', color: 'rgba(24,222,220,0.97)', padding: '6px 16px' }
                               }
@@ -3904,7 +5295,7 @@ export default function DashboardClient() {
             {/* ── SETTINGS: INTEGRATIONS ───────────────────────────────────── */}
             {activeTab === 'settings' && activeSettingsLever === 'integrations' && (
               <div>
-                {integrations.length === 0 ? (
+                {integrationRows.length === 0 ? (
                   <GlassCard className="mb-4 px-5 py-4 border-[rgba(255,255,255,0.1)]">
                     <div className="font-mono text-[10px] text-[rgba(255,255,255,0.52)] uppercase tracking-[2px]">
                       No integrations configured yet.
@@ -3914,54 +5305,11 @@ export default function DashboardClient() {
 
                 <div className="flex items-center justify-between mb-3.5">
                   <div className="font-mono text-[9px] tracking-[3px] text-[rgba(255,255,255,0.4)] uppercase">Integrations</div>
-                  <span className="px-2.5 py-[3px] rounded-[20px] bg-[rgba(14,124,123,0.12)] border border-[rgba(14,124,123,0.28)] font-mono text-[8.5px] text-[rgba(14,200,198,0.7)] tracking-[1px]">{integrations.length} Connected</span>
+                  <span className="px-2.5 py-[3px] rounded-[20px] bg-[rgba(14,124,123,0.12)] border border-[rgba(14,124,123,0.28)] font-mono text-[8.5px] text-[rgba(14,200,198,0.7)] tracking-[1px]">{connectedIntegrations}/{integrationRows.length} Connected</span>
                 </div>
 
-                <GlassCard className="p-4 mb-3.5 border-[rgba(14,124,123,0.28)]">
-                  <div className="font-mono text-[9px] tracking-[2px] text-[rgba(14,200,198,0.6)] uppercase mb-3">CMS Publish (Shopify/Webflow)</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-2.5">
-                    <select
-                      value={cmsProvider}
-                      onChange={(e) => setCmsProvider(e.target.value as 'shopify' | 'webflow')}
-                      className="rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                    >
-                      <option value="shopify">Shopify</option>
-                      <option value="webflow">Webflow</option>
-                    </select>
-                    <input
-                      value={cmsTitle}
-                      onChange={(e) => setCmsTitle(e.target.value)}
-                      placeholder="Post title"
-                      className="rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2.5 mb-2.5">
-                    <input
-                      value={cmsSlug}
-                      onChange={(e) => setCmsSlug(e.target.value)}
-                      placeholder="post-slug"
-                      className="rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleCmsPublish()}
-                      disabled={cmsPublishLoading}
-                      className="px-4 py-2 rounded-lg border border-[rgba(14,200,198,0.45)] bg-[rgba(14,124,123,0.3)] font-mono text-[11px] font-bold text-[rgba(14,200,198,1)] hover:bg-[rgba(14,124,123,0.5)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    >
-                      {cmsPublishLoading ? 'Publishing…' : `Publish to ${cmsProvider === 'shopify' ? 'Shopify' : 'Webflow'}`}
-                    </button>
-                  </div>
-                  <textarea
-                    value={cmsBody}
-                    onChange={(e) => setCmsBody(e.target.value)}
-                    rows={5}
-                    placeholder="<h1>Your content</h1><p>Write or paste HTML content...</p>"
-                    className="w-full rounded-lg border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-3 py-2 font-mono text-[12px] text-[rgba(255,255,255,0.85)] placeholder:text-[rgba(255,255,255,0.25)] focus:outline-none focus:border-[rgba(14,200,198,0.45)]"
-                  />
-                </GlassCard>
-
                 <GlassCard className="p-4">
-                  {integrations.map(({ icon, name, desc, statusText, dotColor, textColor }, idx) => {
+                  {integrationRows.map(({ icon, name, desc, statusText, dotColor, textColor }, idx) => {
                     const actionState = getIntegrationActionState(name, statusText);
                     return (
                     <div key={name} className={`flex items-center justify-between py-3 ${idx > 0 ? 'border-t border-[rgba(255,255,255,0.05)]' : ''}`}>
@@ -3990,6 +5338,10 @@ export default function DashboardClient() {
                   );})}
                 </GlassCard>
               </div>
+            )}
+
+            {activeTab === 'settings' && activeSettingsLever === 'cms' && (
+              <CMSConnections embedded isLightTheme={isLightTheme} />
             )}
 
             {/* ── SETTINGS: SECURITY ───────────────────────────────────────── */}
@@ -4045,6 +5397,7 @@ export default function DashboardClient() {
                 </div>
               </div>
             )}
+            </div>
           </div>
 
           {/* Status Bar */}
@@ -4066,6 +5419,133 @@ export default function DashboardClient() {
           </div>
         </div>
       </div>
+
+      {/* ── Edit Social Post Modal — rendered via portal to document.body ── */}
+      {editSocialPost !== null && typeof document !== 'undefined' && createPortal(
+        <div
+          aria-hidden="false"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            boxSizing: 'border-box',
+          }}
+        >
+          {/* Overlay */}
+          <div
+            aria-hidden="true"
+            onClick={closeSocialEdit}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(1, 4, 12, 0.86)',
+              backdropFilter: 'blur(4px)',
+              WebkitBackdropFilter: 'blur(4px)',
+            }}
+          />
+
+          {/* Dialog — compact 520px card */}
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit social post"
+            className="relative z-10 flex flex-col rounded-2xl border border-[rgba(14,124,123,0.4)] shadow-[0_20px_56px_rgba(0,0,0,0.8),0_0_24px_rgba(14,124,123,0.2),inset_0_1px_0_rgba(255,255,255,0.06)]"
+            style={{ background: '#050A14', width: '100%', maxWidth: '520px', maxHeight: '82vh' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3.5 border-b border-[rgba(255,255,255,0.07)]">
+              <div>
+                <div className="font-mono text-[9px] tracking-[2.4px] text-[rgba(14,200,198,0.65)] uppercase mb-1">
+                  Edit Post
+                </div>
+                <div className="text-[rgba(220,236,255,0.93)] font-semibold text-[13px] leading-tight">
+                  {editSocialPost.channel}
+                  <span className="mx-1.5 text-[rgba(255,255,255,0.2)]">·</span>
+                  <span className="font-mono text-[11px] text-[rgba(14,200,198,0.78)]">{editSocialPost.handle}</span>
+                </div>
+              </div>
+              <button
+                onClick={closeSocialEdit}
+                aria-label="Close"
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.04)] text-[rgba(160,182,210,0.7)] hover:bg-[rgba(255,255,255,0.1)] hover:text-white transition-all duration-150"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Meta strip */}
+            <div className="px-5 pt-2.5 pb-1.5 flex items-center gap-2 flex-wrap border-b border-[rgba(255,255,255,0.04)]">
+              {editSocialPost.bias !== null && (
+                <span className="rounded-full border border-[rgba(14,200,198,0.22)] bg-[rgba(14,200,198,0.07)] px-2 py-0.5 font-mono text-[8.5px] tracking-[0.8px] text-[rgba(14,200,198,0.78)] uppercase">
+                  BIAS {editSocialPost.bias}
+                </span>
+              )}
+              <span className="rounded-full border border-[rgba(210,228,255,0.15)] bg-[rgba(210,228,255,0.04)] px-2 py-0.5 font-mono text-[8.5px] tracking-[0.8px] text-[rgba(170,192,235,0.6)] uppercase">
+                {editSocialPost.model}
+              </span>
+              <span className="font-mono text-[8.5px] text-[rgba(190,208,240,0.3)]">
+                {editSocialPost.generatedAgo}
+              </span>
+            </div>
+
+            {/* Textarea */}
+            <div className="px-5 py-4 flex-1 overflow-auto">
+              <div className="relative">
+                <textarea
+                  value={editSocialBody}
+                  onChange={e => setEditSocialBody(e.target.value)}
+                  rows={7}
+                  spellCheck
+                  autoFocus
+                  className="w-full resize-none rounded-xl border border-[rgba(14,124,123,0.3)] bg-[rgba(2,6,16,0.97)] px-4 py-3 font-mono text-[11px] leading-[1.8] text-[rgba(215,232,255,0.84)] placeholder-[rgba(130,155,190,0.32)] outline-none focus:border-[rgba(14,200,198,0.5)] focus:ring-1 focus:ring-[rgba(14,200,198,0.18)] transition-all duration-150"
+                  placeholder="Write your LinkedIn post here…"
+                  aria-label="Post content"
+                />
+                <div className="absolute bottom-2 right-3 font-mono text-[8.5px] text-[rgba(130,155,190,0.38)]">
+                  {editSocialBody.trim().length}
+                </div>
+              </div>
+              <p className="mt-1.5 font-mono text-[8.5px] text-[rgba(130,155,190,0.35)] leading-relaxed">
+                Blank line = new paragraph · edits update the card instantly
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2.5 px-5 py-3.5 border-t border-[rgba(255,255,255,0.07)]">
+              <button
+                onClick={closeSocialEdit}
+                disabled={editSocialSaving}
+                className="rounded-full border border-[rgba(210,228,255,0.2)] bg-transparent px-4 py-1.5 text-[10.5px] font-medium text-[rgba(195,215,245,0.68)] hover:bg-[rgba(210,228,255,0.08)] hover:text-white transition-all duration-150 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void handleEditSocialSave(); }}
+                disabled={editSocialSaving || !editSocialBody.trim()}
+                aria-busy={editSocialSaving}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(14,200,198,0.52)] bg-[rgba(14,155,152,0.28)] px-5 py-1.5 text-[10.5px] font-semibold text-[rgba(20,224,220,0.96)] shadow-[0_0_12px_rgba(14,180,176,0.2)] hover:bg-[rgba(14,155,152,0.44)] hover:border-[rgba(14,200,198,0.76)] hover:shadow-[0_0_18px_rgba(14,180,176,0.35)] transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {editSocialSaving && (
+                  <span aria-hidden="true" className="h-3 w-3 rounded-full border border-current border-t-transparent animate-spin" />
+                )}
+                {editSocialSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
 
       <ToastContainer toasts={toast.toasts} onDismiss={toast.dismiss} />
     </div>

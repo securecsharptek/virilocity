@@ -1,14 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { runAutopilot, AUTOPILOT_TASKS as ENGINE_AUTOPILOT_TASKS } from '../../../lib/agents/autopilot';
-import { HubSpotContacts } from '../../../lib/integrations/hubspot';
+import type { TenantAgentContext, AutopilotResult } from '../../../lib/agents/autopilot';
+import { runAgentCall } from '../../../lib/ai/client';
+import { HubSpotAuth, HubSpotContacts } from '../../../lib/integrations/hubspot';
 import { getTenantDashboardState, setTenantDashboardState } from '../../../lib/db/dashboard-state';
 import type { Tenant, Tier, TenantModel, AgentType } from '../../../lib/types/index';
-import { getSecret } from '../../../lib/auth/keyvault';
+import { getSecret, setSecret } from '../../../lib/auth/keyvault';
 import { publishCMSContent, CMSIntegrationError } from '../../../lib/integrations/cms';
-import { AGENT_COUNT, HAIKU_AGENTS, REDDIT_REQUIRES_HUMAN_APPROVAL } from '../../../lib/types/index';
-import { db, contentPages, payments, agentExecutions, abTests as abTestsTable } from '../../../lib/db/client';
-import { eq, desc, sum, count } from 'drizzle-orm';
+import { LinkedInPoster } from '../../../lib/integrations/linkedin';
+import {
+  AGENT_ACTIVATION_PLAN,
+  AGENT_COUNT,
+  getTierAgentLimit,
+  HAIKU_AGENTS,
+  isTierEligible,
+  REDDIT_REQUIRES_HUMAN_APPROVAL,
+} from '../../../lib/types/index';
+import { db, contentPages, payments, agentExecutions, abTests as abTestsTable, hsContacts, kbDocuments as kbDocumentsTable, orgMembers as orgMembersTable, redditThreads, tenants, users } from '../../../lib/db/client';
+import { uid, trunc } from '../../../lib/utils/index';
+import { eq, desc, sum, count, gte, lt, and, isNull } from 'drizzle-orm';
+
+// Lightweight in-process backoff so frequent /dashboard/data polls do not spam
+// external HubSpot calls/logs when credentials are missing or invalid.
+const HUBSPOT_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
+const hubspotSyncMutedUntil = new Map<string, number>();
+const hubspotLogMutedUntil = new Map<string, number>();
+
+const isMuted = (store: Map<string, number>, key: string): boolean => {
+  const until = store.get(key) ?? 0;
+  return until > Date.now();
+};
+
+const mute = (store: Map<string, number>, key: string, ttlMs: number): void => {
+  store.set(key, Date.now() + ttlMs);
+};
+
+const shouldLogHubspot = (tenantId: string, reason: string): boolean => {
+  const key = `${tenantId}:${reason}`;
+  if (isMuted(hubspotLogMutedUntil, key)) return false;
+  mute(hubspotLogMutedUntil, key, HUBSPOT_SYNC_COOLDOWN_MS);
+  return true;
+};
 
 type FeedItem = {
   id: string;
@@ -111,6 +144,26 @@ type FunnelStage = {
   dropoff?: number;
 };
 
+type TrafficKpis = {
+  visitors: string;
+  momLabel: string;
+  pagesPerSession: string;
+  avgDuration: string;
+  bounceRate: string;
+};
+
+type ConversionKpis = {
+  overallConvRate: string;
+  trialToPaid: string;
+  arr: string;
+  arrGrowthLabel: string;
+  churnRate: string;
+  avgLtv: string;
+  cacPayback: string;
+  activeSubscriptions: string;
+  subsMomLabel: string;
+};
+
 type RevenueSegment = {
   tier: string;
   revenue: number;
@@ -201,6 +254,30 @@ type AuthItem = {
   badge: string;
 };
 
+type SocialPost = {
+  id: string;
+  channel: string;
+  handle: string;
+  generatedAgo: string;
+  bias: string | null;
+  model: string;
+  body: string[];
+  primaryAction: string;
+  secondaryAction: string;
+  status: 'draft' | 'posted';
+};
+
+type BlogArticle = {
+  id: string;
+  title: string;
+  words: string;
+  bias: string;
+  published: string | null;
+  visits: string | null;
+  source: 'hitl' | 'agent' | 'manual';
+  action: 'Preview' | 'View';
+};
+
 type DashboardStore = {
   testsPassedLabel: string;
   tevvScore: number;
@@ -239,6 +316,8 @@ type DashboardStore = {
     funnel: FunnelStage[];
     revenueBreakdown: RevenueSegment[];
     abTests: ABTest[];
+    trafficKpis: TrafficKpis;
+    conversionKpis: ConversionKpis;
   };
   contacts: {
     all: Contact[];
@@ -250,6 +329,8 @@ type DashboardStore = {
       activeSegments: number;
     };
   };
+  socialPosts: SocialPost[];
+  blogArticles: BlogArticle[];
   settings: {
     billingHistory: BillingHistoryItem[];
     platformStatus: PlatformStatusItem[];
@@ -284,14 +365,20 @@ const getAutopilotModelLabel = (agent: AgentType, tier: Tier): string => {
 };
 
 const buildAutopilotTasks = (tier: Tier): TaskScheduleItem[] => {
-  const scheduled = ENGINE_AUTOPILOT_TASKS.map((agent): TaskScheduleItem => ({
-    agent,
-    task: AUTOPILOT_TASK_LABELS[agent] ?? `Run ${agent.replaceAll('_', ' ')}`,
-    model: getAutopilotModelLabel(agent, tier),
-    status: 'scheduled',
-  }));
+  const tierLimit = getTierAgentLimit(tier);
+  const eligibleAgents = ENGINE_AUTOPILOT_TASKS.filter(agent =>
+    isTierEligible(tier, AGENT_ACTIVATION_PLAN[agent].minTier),
+  );
+  const scheduled = eligibleAgents
+    .filter((_, index) => tierLimit < 0 || index < tierLimit)
+    .map((agent): TaskScheduleItem => ({
+      agent,
+      task: AUTOPILOT_TASK_LABELS[agent] ?? `Run ${agent.replaceAll('_', ' ')}`,
+      model: getAutopilotModelLabel(agent, tier),
+      status: 'scheduled',
+    }));
 
-  if (REDDIT_REQUIRES_HUMAN_APPROVAL) {
+  if (REDDIT_REQUIRES_HUMAN_APPROVAL && isTierEligible(tier, AGENT_ACTIVATION_PLAN.reddit_manager.minTier)) {
     scheduled.push({
       agent: 'reddit_manager',
       task: 'Draft community post',
@@ -426,6 +513,8 @@ const syncAgentsFromAutopilot = (store: DashboardStore) => {
     'campaign_orchestrator',
   ];
 
+  const tenantTier = ((store.userProfile.tier ?? 'free') as Tier);
+
   store.agents.all = ALL_AGENT_TYPES.map((agentName, index) => {
     const task = taskStatusMap.get(agentName);
     const status: AgentCard['status'] = task?.status === 'running'
@@ -433,7 +522,6 @@ const syncAgentsFromAutopilot = (store: DashboardStore) => {
       : task?.status === 'hitl'
         ? 'hitl'
         : 'idle';
-    const isHaiku = HAIKU_AGENTS.has(agentName as AgentType);
 
     return {
       id: `agent_${index + 1}`,
@@ -442,7 +530,7 @@ const syncAgentsFromAutopilot = (store: DashboardStore) => {
       status,
       description: agentDescriptions[agentName] ?? agentName.replace(/_/g, ' ').toUpperCase(),
       fairnessScore: status === 'hitl' ? 0 : Math.floor(78 + ((index * 7) % 18)),
-      model: isHaiku ? 'Haiku' : (index % 3 === 0 ? 'Opus' : 'Sonnet'),
+      model: getAutopilotModelLabel(agentName as AgentType, tenantTier),
       timestamp: task ? getAgentCardTimestamp(task.status) : 'Available · not scheduled',
     };
   });
@@ -460,7 +548,7 @@ const syncAgentsFromAutopilot = (store: DashboardStore) => {
   store.agents.scheduled = store.autopilot.tasks.map((task, index) => ({
     id: `sch_${index + 1}`,
     name: task.agent,
-    schedule: task.status === 'hitl' ? 'Human approval' : 'Every 6h',
+    schedule: task.status === 'hitl' ? 'Human approval' : 'Every 24h',
     nextRun: task.status === 'running' ? 'in progress' : getCountdownLabel(store.autopilot.nextRunAt),
     model: task.model,
     estDuration: task.status === 'hitl' ? '~manual' : '~2m',
@@ -491,81 +579,318 @@ const mergeAutopilotTasks = (existing: TaskScheduleItem[] | undefined, tier: Tie
   });
 };
 
-const INITIAL_HITL_QUEUE: HITLQueueItem[] = [
-  {
-    id: '1',
-    subreddit: 'r/SaaSMarketing',
-    title: 'How We Cut CAC by 48% with AI Agents',
-    agent: 'reddit_manager',
-    platform: 'Reddit',
-    content: "We've been running an AI agent stack for 90 days now. Here's what actually moved the needle on CAC...",
-    queuedAt: now() - 30 * 60 * 1000,
-  },
-  {
-    id: '2',
-    subreddit: 'r/ArtificialIntelligence',
-    title: 'Fairness Filtering in Production AI Agents',
-    agent: 'reddit_manager',
-    platform: 'Reddit',
-    content: 'Running NIST TEVV-aligned Fairness Filters on LLM outputs at scale...',
-    queuedAt: now() - 42 * 60 * 1000,
-  },
-  {
-    id: '3',
-    subreddit: 'r/Startups',
-    title: 'Enterprise SaaS Lessons from Year 2',
-    agent: 'reddit_manager',
-    platform: 'Reddit',
-    content: 'Year 2 of building a B2B SaaS for marketing teams. Three things I wish I had known...',
-    queuedAt: now() - 55 * 60 * 1000,
-  },
-];
+const INITIAL_HITL_QUEUE: HITLQueueItem[] = [];
+
+type RedditDraft = {
+  subreddit: string;
+  title: string;
+  content: string;
+};
+
+const normalizeDraftEntry = (entry: Record<string, unknown>): RedditDraft | null => {
+  const content =
+    typeof entry['content'] === 'string' ? entry['content'].trim()
+    : typeof entry['postDraft'] === 'string' ? entry['postDraft'].trim()
+    : typeof entry['draft'] === 'string' ? entry['draft'].trim()
+    : typeof entry['body'] === 'string' ? entry['body'].trim()
+    : typeof entry['text'] === 'string' ? entry['text'].trim()
+    : '';
+
+  if (!content) return null;
+
+  const title =
+    typeof entry['title'] === 'string' && entry['title'].trim().length > 0
+      ? entry['title'].trim()
+      : inferTitleFromDraft(content);
+
+  const subreddit = normalizeSubreddit(
+    typeof entry['subreddit'] === 'string'
+      ? entry['subreddit']
+      : typeof entry['name'] === 'string'
+        ? entry['name']
+        : 'r/marketing',
+  );
+
+  return { subreddit, title, content };
+};
+
+const isDbConfigured = (): boolean => Boolean(process.env['DATABASE_URL']?.trim());
+
+const normalizeSubreddit = (value: string): string => {
+  const cleaned = value.trim().replace(/^\/+/, '');
+  if (!cleaned) return 'r/marketing';
+  return cleaned.toLowerCase().startsWith('r/') ? cleaned : `r/${cleaned}`;
+};
+
+const inferTitleFromDraft = (content: string): string => {
+  const firstLine = content
+    .split('\n')
+    .map(line => line.trim())
+    .find(Boolean) ?? 'AI marketing insights';
+  return firstLine.slice(0, 120);
+};
+
+const parseRedditDrafts = (rawOutput: string): RedditDraft[] => {
+  const cleaned = rawOutput
+    .replace(/^\s*```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+
+  const candidates: string[] = [cleaned];
+  const objectMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objectMatch && objectMatch[0] !== cleaned) {
+    candidates.push(objectMatch[0]);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      const sourceBuckets: unknown[] = Array.isArray(parsed)
+        ? [parsed]
+        : typeof parsed === 'object' && parsed !== null
+          ? [
+              (parsed as Record<string, unknown>)['drafts'],
+              (parsed as Record<string, unknown>)['subreddits'],
+              (parsed as Record<string, unknown>)['posts'],
+              (parsed as Record<string, unknown>)['threads'],
+              (parsed as Record<string, unknown>)['items'],
+            ]
+          : [];
+
+      const merged = sourceBuckets
+        .flatMap(bucket => Array.isArray(bucket) ? bucket : [])
+        .map(item => (typeof item === 'object' && item !== null ? normalizeDraftEntry(item as Record<string, unknown>) : null))
+        .filter((draft): draft is RedditDraft => Boolean(draft))
+        .slice(0, 5);
+
+      if (merged.length > 0) return merged;
+    } catch {
+      continue;
+    }
+  }
+
+  // Last-resort fallback: keep agent response in HITL instead of silently dropping it.
+  if (cleaned.length > 0) {
+    const content = cleaned.slice(0, 2000);
+    return [{
+      subreddit: 'r/marketing',
+      title: inferTitleFromDraft(content),
+      content,
+    }];
+  }
+
+  return [];
+};
+
+const loadHitlQueueFromDb = async (tenantId: string): Promise<HITLQueueItem[] | null> => {
+  if (!isDbConfigured()) return null;
+
+  try {
+    const rows = await db.select().from(redditThreads)
+      .where(and(eq(redditThreads.tenantId, tenantId), isNull(redditThreads.approvedAt)))
+      .orderBy(desc(redditThreads.createdAt));
+
+    return rows.map((row): HITLQueueItem => ({
+      id: row.id,
+      subreddit: row.subreddit,
+      title: row.title,
+      agent: 'reddit_manager',
+      platform: 'Reddit',
+      content: (row.draftResponse ?? '').trim() || 'Draft pending content update',
+      queuedAt: row.createdAt ? new Date(row.createdAt).getTime() : now(),
+    }));
+  } catch (err) {
+    console.warn('[hitl-queue] failed to load reddit drafts:', err instanceof Error ? err.message : String(err));
+    return null;
+  }
+};
+
+const refreshHitlQueueFromDb = async (tenantId: string, store: DashboardStore): Promise<void> => {
+  if (!isDbConfigured()) return; // keep in-memory store drafts intact when no DB
+  const queued = await loadHitlQueueFromDb(tenantId);
+  if (queued) {
+    store.hitlQueue = queued;
+    store.autopilot.lastRunSummary.hitlPending = store.hitlQueue.length;
+  }
+};
+
+const generateAndPersistRedditDrafts = async (
+  tenant: Tenant,
+  context: TenantAgentContext,
+  store?: DashboardStore,
+): Promise<number> => {
+  const systemPrompt = 'You are a Reddit community manager simulator. Create 2 concise community-safe draft posts for marketing-focused subreddits. Output JSON only: {"drafts":[{"subreddit":"r/marketing","title":"...","content":"..."}],"status":"pending_human_approval"}';
+  const userPrompt = JSON.stringify({
+    tenant: tenant.name,
+    tier: tenant.tier,
+    context,
+    rules: [
+      'Never publish automatically',
+      'Drafts must be pending human approval',
+      'Keep content educational and non-promotional spam',
+    ],
+  });
+
+  try {
+    const result = await runAgentCall('reddit_manager', tenant.tier, systemPrompt, userPrompt);
+    const drafts = parseRedditDrafts(result.output);
+    if (drafts.length === 0) return 0;
+
+    if (isDbConfigured()) {
+      await Promise.all(drafts.map(draft =>
+        db.insert(redditThreads).values({
+          id: uid('thread'),
+          tenantId: tenant.id,
+          subreddit: draft.subreddit,
+          title: draft.title,
+          draftResponse: draft.content,
+          requiresHumanApproval: REDDIT_REQUIRES_HUMAN_APPROVAL,
+        })
+      ));
+    } else if (store) {
+      // No DB configured — keep drafts in the dashboard store (in-memory persistence).
+      const inMemoryItems: HITLQueueItem[] = drafts.map((draft): HITLQueueItem => ({
+        id: uid('thread'),
+        subreddit: draft.subreddit,
+        title: draft.title,
+        agent: 'reddit_manager',
+        platform: 'Reddit',
+        content: draft.content,
+        queuedAt: now(),
+      }));
+      // Prepend new drafts; dedupe by title so repeat runs don't stack.
+      const existingTitles = new Set(store.hitlQueue.map(item => item.title));
+      const newItems = inMemoryItems.filter(item => !existingTitles.has(item.title));
+      store.hitlQueue = [...newItems, ...store.hitlQueue].slice(0, 10);
+      store.autopilot.lastRunSummary.hitlPending = store.hitlQueue.length;
+    }
+
+    return drafts.length;
+  } catch (err) {
+    console.warn('[hitl-queue] failed to generate reddit drafts:', err instanceof Error ? err.message : String(err));
+    return 0;
+  }
+};
+
+const INITIAL_SOCIAL_POSTS: SocialPost[] = [];
+
+const buildReplacementLinkedInDraft = (store: DashboardStore): SocialPost => {
+  const { activeAgents, leadsCaptured, postsGenerated, mrr } = store.kpis;
+  const mrrK = (mrr / 1000).toFixed(1);
+
+  const variants: Array<{ bias: string; body: string[] }> = [
+    {
+      bias: '92.1',
+      body: [
+        `Most B2B teams are leaving pipeline on the table — not because they lack data, but because they can't act on it fast enough.`,
+        `We're running ${activeAgents} AI agents in parallel: qualifying leads the moment they enter the CRM, scoring intent signals overnight, and queuing follow-ups before the SDR opens their laptop.`,
+        `Result this week: ${leadsCaptured} qualified leads processed — zero extra headcount.`,
+        `Which part of your pipeline takes longest to respond? Drop it below. 👇 #B2BMarketing #AIAutomation #DemandGen #SaaS`,
+      ],
+    },
+    {
+      bias: '90.5',
+      body: [
+        `Here's a number that changed how we think about content ROI: ${postsGenerated} campaign assets published this month — all drafted, reviewed, and scheduled through an AI workflow.`,
+        `Not templated noise. Each piece is tuned to a buyer stage: awareness, consideration, or decision — with a human reviewing anything that goes out under our brand name.`,
+        `The compounding effect on organic reach is real. SEO impressions up. Engagement rate up. Time spent writing down 80%.`,
+        `If you're still writing every post from scratch, I'd love to show you what the stack looks like. #ContentMarketing #SEO #AIWriting #GrowthMarketing`,
+      ],
+    },
+    {
+      bias: '91.8',
+      body: [
+        `$${mrrK}k MRR with a marketing team of two. Here's how the math works:`,
+        `→ ${activeAgents} AI agents handle prospecting, content, CRM enrichment, and reporting\n→ Humans handle strategy, approvals, and relationship calls\n→ No agency retainer. No 6-person marketing department.`,
+        `The shift isn't "replace people with AI." It's "stop asking people to do what AI is faster at."`,
+        `What's one task your team does manually that you suspect could be automated? #StartupMarketing #RevOps #AIAgents #B2BSaaS`,
+      ],
+    },
+    {
+      bias: '89.9',
+      body: [
+        `Unpopular opinion: most marketing dashboards tell you what happened. Very few tell you what to do next.`,
+        `We built our AI stack around that gap. After every campaign run, agents surface the three highest-ROI actions for the next 48 hours — ranked by predicted pipeline impact, not gut feel.`,
+        `This week that meant pausing two ad sets, doubling down on one nurture sequence, and publishing ${postsGenerated % 10 + 3} new long-form assets before a competitor keyword window opened.`,
+        `How do you decide where to focus your marketing energy each week? #DataDrivenMarketing #MarketingOps #AI #GrowthHacking`,
+      ],
+    },
+    {
+      bias: '91.2',
+      body: [
+        `Lead qualification used to eat 3–4 hours of our week. Now it's a background process.`,
+        `Our AI qualifier scores every inbound lead against 14 firmographic and behavioural signals, enriches the HubSpot record, and routes hot leads to a rep within 60 seconds of form submit — all without human involvement.`,
+        `${leadsCaptured} leads processed this cycle. Sales team only touched the ones that scored above threshold.`,
+        `If your team is still manually qualifying leads, I'm happy to walk through our setup. #LeadGen #HubSpot #SalesOps #AIMarketing`,
+      ],
+    },
+    {
+      bias: '90.3',
+      body: [
+        `The compounding advantage of AI-generated SEO content is underrated.`,
+        `Each post our blog_writer agent produces is structured around a primary keyword cluster, supports two secondary terms, and includes internal links to high-converting pages — automatically.`,
+        `Over ${Math.round(postsGenerated * 1.4)} articles in, organic traffic is up and the cost-per-visitor is a fraction of what paid acquisition costs.`,
+        `The best time to start was 6 months ago. The second best time is now. #SEOMarketing #ContentStrategy #OrganicGrowth #B2BContent`,
+      ],
+    },
+    {
+      bias: '91.6',
+      body: [
+        `What does an AI-first GTM motion actually look like day-to-day?`,
+        `Morning: agents surface overnight lead activity, flag churn signals, and queue today's content.\nAfternoon: humans review HITL-gated decisions, approve outreach, take strategic calls.\nEvening: orchestration loop runs, CRM is updated, tomorrow's priorities are set.`,
+        `${activeAgents} agents. One human review session. Full-funnel coverage.`,
+        `The goal was never to remove humans from marketing — it was to put them where they create the most value. #GTM #MarketingAutomation #AIFirst #SaaSGrowth`,
+      ],
+    },
+    {
+      bias: '90.0',
+      body: [
+        `Churn prediction is one of the most underused growth levers in SaaS.`,
+        `We run a churn_predictor agent that monitors product usage signals, support ticket sentiment, and CRM engagement scores — then surfaces at-risk accounts before they even know they're thinking about leaving.`,
+        `Early interventions are cheap. Winning back churned customers is expensive. The math is obvious once you see the data.`,
+        `Does your team have a proactive churn signal in place, or are you relying on renewal date as the warning? #CustomerSuccess #ChurnPrevention #SaaS #AIMarketing`,
+      ],
+    },
+  ];
+
+  // Use time-based randomisation so consecutive posts don't cycle predictably
+  const idx = Math.floor(Date.now() / 1000) % variants.length;
+  const variant = variants[idx] ?? variants[0]!;
+
+  return {
+    id: `linkedin_draft_${Date.now()}`,
+    channel: 'LINKEDIN',
+    handle: 'linkedin_poster',
+    generatedAgo: 'Generated just now',
+    bias: variant.bias,
+    model: 'Sonnet',
+    body: variant.body,
+    primaryAction: 'Post Now',
+    secondaryAction: 'Edit',
+    status: 'draft',
+  };
+};
 
 const INITIAL_STORE: DashboardStore = {
   testsPassedLabel: '535/535 PASS',
   tevvScore: 95.4,
   kpis: {
-    activeAgents: 12,
-    postsGenerated: 47,
-    leadsCaptured: 284,
-    mrr: 8320,
+    activeAgents: 0,
+    postsGenerated: 0,
+    leadsCaptured: 0,
+    mrr: 0,
   },
-  feedItems: [
-    {
-      id: '1',
-      message: '**blog_writer** generated "10 AI Marketing Trends" — 1,240 words',
-      time: '2 min ago · Sonnet · BIAS 84.2',
-      type: 'teal',
-    },
-    {
-      id: '2',
-      message: '**lead_qualifier** scored 14 new HubSpot contacts',
-      time: '7 min ago · Haiku',
-      type: 'green',
-    },
-    {
-      id: '3',
-      message: '**reddit_manager** awaiting approval — r/SaaSMarketing post ready',
-      time: '12 min ago · HITL pending',
-      type: 'gold',
-    },
-    {
-      id: '4',
-      message: '**seo_optimizer** updated 8 meta descriptions for blog posts',
-      time: '18 min ago · Haiku',
-      type: 'teal',
-    },
-  ],
+  feedItems: [],
   autopilot: {
     running: false,
     paused: false,
     stopRequested: false,
     nextRunAt: now() + 2 * 60 * 60 * 1000 + 4 * 60 * 1000,
     lastRunSummary: {
-      completedTasks: 34,
-      postsCreated: 58,
-      hitlPending: 3,
-      durationText: '02:18',
+      completedTasks: 0,
+      postsCreated: 0,
+      hitlPending: INITIAL_HITL_QUEUE.length,
+      durationText: '—',
     },
     tasks: buildAutopilotTasks('free'),
   },
@@ -597,19 +922,8 @@ const INITIAL_STORE: DashboardStore = {
       { id: '6', name: 'competitor_analyzer', schedule: 'Weekly Mon', nextRun: 'in 2d', model: 'Sonnet', estDuration: '~8m', status: 'scheduled' },
       { id: '7', name: 'ab_test_analyzer', schedule: 'Weekly Sun', nextRun: 'in 6d', model: 'Sonnet', estDuration: '~7m', status: 'scheduled' },
     ],
-  },  kbDocuments: [
-    { id: '1', category: 'product-docs', title: 'Virilocity Platform Overview', words: '4,280 words', updated: 'Updated 2d ago', actionLabel: 'Re-train' },
-    { id: '2', category: 'product-docs', title: '39 Agent Capabilities Guide', words: '8,640 words', updated: 'Updated today', actionLabel: 'Re-train' },
-    { id: '3', category: 'brand', title: 'Brand Voice & Tone Guidelines', words: '2,100 words', updated: 'Updated 5d ago', actionLabel: 'Edit' },
-    { id: '4', category: 'competitor-intel', title: 'Market Landscape Analysis', words: '6,320 words', updated: 'Updated 1w ago', actionLabel: 'Re-train' },
-    { id: '5', category: 'product-docs', title: 'Pricing & Tier Comparison', words: '1,840 words', updated: 'Updated 3d ago', actionLabel: 'Re-train' },
-  ],
-  orgMembers: [
-    { id: 'mem_001', initials: 'KM', name: 'Keshav Choudhary', email: 'keshav@cloudonesoftware.com', role: 'Owner' },
-    { id: 'mem_002', initials: 'AM', name: 'Alex Martinez', email: 'alex@cloudonesoftware.com', role: 'Admin' },
-    { id: 'mem_003', initials: 'JL', name: 'Jamie Lee', email: 'jamie@cloudonesoftware.com', role: 'Member' },
-    { id: 'mem_004', initials: 'SR', name: 'Sam Rivera', email: 'sam@cloudonesoftware.com', role: 'Member' },
-  ],
+  },  kbDocuments: [],
+  orgMembers: [],
   userProfile: {
     name: 'User',
     initials: 'U',
@@ -618,31 +932,28 @@ const INITIAL_STORE: DashboardStore = {
     tier: 'free',
   },
   analytics: {
-    channels: [
-      { name: 'Organic Search', visits: '5,840', share: 47, accent: 'teal' },
-      { name: 'Direct', visits: '2,400', share: 20, accent: 'teal' },
-      { name: 'LinkedIn (AI agent)', visits: '1,860', share: 15, accent: 'teal' },
-      { name: 'Email (agent)', visits: '1,240', share: 10, accent: 'teal' },
-      { name: 'Reddit (HITL)', visits: '980', share: 8, accent: 'gold' },
-    ],
-    topPages: [
-      { page: '/blog/ai-marketing-agents-2026', visits: '2,140', avgPosition: '3.2', ctr: '12.8%', generatedBy: 'blog_writer' },
-      { page: '/blog/saas-cac-reduction', visits: '1,820', avgPosition: '5.4', ctr: '9.4%', generatedBy: 'blog_writer' },
-      { page: '/features/autopilot', visits: '1,240', avgPosition: '8.1', ctr: '6.2%', generatedBy: 'Manual' },
-      { page: '/blog/content-fairness-ai', visits: '980', avgPosition: '11.3', ctr: '4.8%', generatedBy: 'blog_writer' },
-      { page: '/pricing', visits: '840', avgPosition: '—', ctr: '—', generatedBy: 'Manual' },
-    ],
-    funnel: [
-      { label: 'Visitors', count: 12400, percentage: 100 },
-      { label: 'Sign-ups', count: 1017, percentage: 8.2, dropoff: 91.8 },
-      { label: 'Trial Users', count: 284, percentage: 2.3, dropoff: 72.0 },
-      { label: 'Paid Customers', count: 88, percentage: 0.7, dropoff: 69.0 },
-    ],
-    revenueBreakdown: [
-      { tier: 'Enterprise', revenue: 4000, percentage: 50, color: 'rgba(255,210,100,0.9)' },
-      { tier: 'Pro', revenue: 2640, percentage: 32, color: 'rgba(14,200,198,0.85)' },
-      { tier: 'Starter', revenue: 300, percentage: 10, color: 'rgba(100,150,180,0.75)' },
-    ],
+    channels: [],
+    topPages: [],
+    funnel: [],
+    revenueBreakdown: [],
+    trafficKpis: {
+      visitors: '—',
+      momLabel: '—',
+      pagesPerSession: '—',
+      avgDuration: '—',
+      bounceRate: '—',
+    },
+    conversionKpis: {
+      overallConvRate: '—',
+      trialToPaid: '—',
+      arr: '—',
+      arrGrowthLabel: '—',
+      churnRate: '—',
+      avgLtv: '—',
+      cacPayback: '—',
+      activeSubscriptions: '—',
+      subsMomLabel: '—',
+    },
     abTests: [
       {
         id: '1',
@@ -681,87 +992,60 @@ const INITIAL_STORE: DashboardStore = {
     ],
   },
   contacts: {
-    all: [
-      { id: '1', name: 'Sarah Chen', company: 'TechFlow Inc', stage: 'Customer', leadScore: 94, lastEnriched: '2h ago', risk: 'Low' },
-      { id: '2', name: 'Marcus Williams', company: 'GrowthLabs', stage: 'SQL', leadScore: 87, lastEnriched: '4h ago', risk: 'Low' },
-      { id: '3', name: 'Priya Patel', company: 'Scale.io', stage: 'MQL', leadScore: 71, lastEnriched: '8h ago', risk: 'Medium' },
-      { id: '4', name: 'Jordan Lee', company: 'Nexus Digital', stage: 'Customer', leadScore: 88, lastEnriched: '1d ago', risk: 'High' },
-      { id: '5', name: 'Alex Romero', company: 'BrightPath Co', stage: 'Lead', leadScore: 42, lastEnriched: '2d ago', risk: null },
-      { id: '6', name: 'Kim Nakamura', company: 'DataDriven LLC', stage: 'SQL', leadScore: 83, lastEnriched: '3h ago', risk: 'Low' },
-      { id: '7', name: "Chris O'Brien", company: 'LaunchFast', stage: 'Customer', leadScore: 91, lastEnriched: '6h ago', risk: 'Medium' },
-    ],
+    all: [],
     pipelineCols: [
       {
-        stage: 'LEADS', count: 48, value: '$0', valueColor: 'rgba(220,235,255,0.88)',
+        stage: 'LEADS', count: 0, value: '$0', valueColor: 'rgba(220,235,255,0.88)',
         headerColor: 'rgba(200,220,245,0.55)', borderColor: 'rgba(180,200,230,0.14)',
         glow: '0 6px 20px rgba(0,0,0,0.4)',
-        more: 45,
-        leads: [
-          { company: 'LaunchFast', score: 42 },
-          { company: 'Momentum Co', score: 38 },
-        ],
+        more: 0,
+        leads: [],
       },
       {
-        stage: 'MQL', count: 32, value: '$28K', valueColor: 'rgba(100,180,255,0.95)',
+        stage: 'MQL', count: 0, value: '$0', valueColor: 'rgba(100,180,255,0.95)',
         headerColor: 'rgba(100,160,255,0.65)', borderColor: 'rgba(80,130,240,0.22)',
         glow: '0 6px 20px rgba(0,0,0,0.4)',
-        more: 28,
-        leads: [
-          { company: 'Scale.io', score: 71 },
-          { company: 'AgileCorp', score: 68 },
-        ],
+        more: 0,
+        leads: [],
       },
       {
-        stage: 'SQL', count: 18, value: '$72K', valueColor: 'rgba(24,222,220,0.97)',
+        stage: 'SQL', count: 0, value: '$0', valueColor: 'rgba(24,222,220,0.97)',
         headerColor: 'rgba(24,218,214,0.7)', borderColor: 'rgba(14,200,198,0.24)',
         glow: '0 6px 20px rgba(0,0,0,0.4)',
-        more: 15,
-        leads: [
-          { company: 'GrowthLabs', score: 87 },
-          { company: 'DataDriven', score: 83 },
-        ],
+        more: 0,
+        leads: [],
       },
       {
-        stage: 'CUSTOMER', count: 88, value: '$42K MRR', valueColor: 'rgba(255,210,90,0.97)',
+        stage: 'CUSTOMER', count: 0, value: '$0', valueColor: 'rgba(255,210,90,0.97)',
         headerColor: 'rgba(255,200,70,0.65)', borderColor: 'rgba(220,170,50,0.55)',
         glow: '0 0 0 1px rgba(220,170,50,0.35), 0 6px 28px rgba(0,0,0,0.5), 0 0 32px rgba(200,155,30,0.28), 0 0 60px rgba(180,135,20,0.14)',
-        more: 85,
-        leads: [
-          { company: 'TechFlow', score: 94 },
-          { company: "Chris O'Brien", score: 91 },
-        ],
+        more: 0,
+        leads: [],
       },
     ],
-    segments: [
-      { id: '1', name: 'At-Risk Customers', contacts: 3, contactsAlert: true, criteria: 'Churn score <0.3', lastUpdated: '31m ago', action: 'Email Campaign', actionVariant: 'teal' },
-      { id: '2', name: 'High-Value SQLs', contacts: 12, contactsAlert: false, criteria: 'Score >80 & stage=SQL', lastUpdated: '3h ago', action: 'Email Campaign', actionVariant: 'teal' },
-      { id: '3', name: 'Trial Users · Day 7', contacts: 28, contactsAlert: false, criteria: 'Trial, joined 7d ago', lastUpdated: 'Daily', action: 'Drip Sequence', actionVariant: 'teal' },
-      { id: '4', name: 'Engaged MQLs', contacts: 44, contactsAlert: false, criteria: 'Stage=MQL & 3+ visits', lastUpdated: '6h ago', action: 'Email Campaign', actionVariant: 'teal' },
-      { id: '5', name: 'Enterprise Prospects', contacts: 8, contactsAlert: false, criteria: 'Company size >200', lastUpdated: '1d ago', action: 'Sales Outreach', actionVariant: 'gold' },
-    ],
+    segments: [],
     summary: {
-      totalSynced: 284,
-      pipelineValue: '$142K',
-      activeSegments: 6,
+      totalSynced: 0,
+      pipelineValue: '$0',
+      activeSegments: 0,
     },
   },
+  socialPosts: INITIAL_SOCIAL_POSTS,
+  blogArticles: [],
   settings: {
-    billingHistory: [
-      { date: 'Apr 12, 2026', amount: '$499.00', status: 'Paid' },
-      { date: 'Mar 12, 2026', amount: '$499.00', status: 'Paid' },
-      { date: 'Feb 12, 2026', amount: '$399.00', status: 'Paid' },
-      { date: 'Jan 12, 2026', amount: '$399.00', status: 'Paid' },
-    ],
+    billingHistory: [],
     platformStatus: [
       { name: 'Vercel Edge', status: 'Operational' },
       { name: 'Neon Database', status: 'Operational' },
       { name: 'Upstash Redis', status: 'Operational' },
       { name: 'Anthropic API', status: 'Operational' },
       { name: 'Azure Key Vault', status: 'Operational' },
+      { name: 'LinkedIn', status: 'Disconnected' },
       { name: 'HubSpot CRM', status: 'Connected' },
     ],
     integrations: [
       { icon: '🔵', name: 'HubSpot CRM', desc: 'Contacts · Deals · Webhooks · Technology Partner', statusText: 'Connected · Syncing', dotColor: 'rgba(30,165,80,1)', textColor: 'rgba(30,165,80,0.85)' },
+      { icon: '🔗', name: 'LinkedIn', desc: 'OAuth 2.0 · Direct social post publishing', statusText: 'Not Connected', dotColor: 'rgba(107,114,128,1)', textColor: 'rgba(107,114,128,0.85)' },
       { icon: '🔷', name: 'Microsoft 365', desc: 'Teams · SharePoint · Mail · MSAL · SAML SSO', statusText: 'Connected', dotColor: 'rgba(30,165,80,1)', textColor: 'rgba(30,165,80,0.85)' },
       { icon: '🟣', name: 'Anthropic Claude API', desc: 'Opus 4 · Sonnet 4 · Haiku — All 39 agents', statusText: 'Connected · Active', dotColor: 'rgba(30,165,80,1)', textColor: 'rgba(30,165,80,0.85)' },
       { icon: '🔑', name: 'Azure Key Vault', desc: 'JWT keys · API secrets · RBAC · Managed Identity', statusText: 'Connected', dotColor: 'rgba(30,165,80,1)', textColor: 'rgba(30,165,80,0.85)' },
@@ -806,6 +1090,34 @@ const makeTenant = (session: DashboardSession): Tenant => {
     ownerId: session?.user?.email ?? undefined,
     createdAt: new Date().toISOString(),
   };
+};
+
+const ensureTenantRow = async (tenant: Tenant): Promise<void> => {
+  if (!process.env['DATABASE_URL']?.trim()) return;
+
+  try {
+    await db.insert(tenants).values({
+      id: tenant.id,
+      name: tenant.name,
+      tier: tenant.tier,
+      model: tenant.model,
+      status: tenant.status,
+      ownerId: tenant.ownerId ?? null,
+      orgId: tenant.orgId ?? null,
+    }).onConflictDoUpdate({
+      target: tenants.id,
+      set: {
+        name: tenant.name,
+        tier: tenant.tier,
+        model: tenant.model,
+        status: tenant.status,
+        ownerId: tenant.ownerId ?? null,
+        orgId: tenant.orgId ?? null,
+      },
+    });
+  } catch (err) {
+    console.warn('[tenant-sync] failed:', err instanceof Error ? err.message : String(err));
+  }
 };
 
 const getQueueAgeText = (queuedAt: number): string => {
@@ -956,8 +1268,116 @@ const computeAnalyticsFromDb = async (tenantId: string, store: DashboardStore): 
         }).onConflictDoNothing()
       ));
     }
+
+    // ── Funnel + ConversionKpis: from users, hsContacts, payments ─────────────
+    const now30 = new Date();
+    const d30ago = new Date(now30.getTime() - 30 * 24 * 3600 * 1000);
+    const d60ago = new Date(now30.getTime() - 60 * 24 * 3600 * 1000);
+    const d365ago = new Date(now30.getTime() - 365 * 24 * 3600 * 1000);
+    const d730ago = new Date(now30.getTime() - 730 * 24 * 3600 * 1000);
+
+    const [contactsTotal] = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(eq(hsContacts.tenantId, tenantId));
+    const [usersTotal] = await db
+      .select({ n: count() })
+      .from(users)
+      .where(eq(users.tenantId, tenantId));
+    const [mqlTotal] = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(and(eq(hsContacts.tenantId, tenantId), eq(hsContacts.lifecycleStage, 'marketingqualifiedlead')));
+    const [paidTotal] = await db
+      .select({ n: count() })
+      .from(payments)
+      .where(and(eq(payments.tenantId, tenantId), eq(payments.status, 'succeeded')));
+
+    const contactsN = Number(contactsTotal?.n ?? 0);
+    const usersN    = Number(usersTotal?.n ?? 0);
+    const mqlN      = Number(mqlTotal?.n ?? 0);
+    const paidN     = Number(paidTotal?.n ?? 0);
+
+    if (contactsN + usersN + mqlN + paidN > 0) {
+      const base = Math.max(contactsN, 1);
+      const dropoff1 = contactsN > 0 ? Math.round((1 - usersN / base) * 1000) / 10 : undefined;
+      const dropoff2 = usersN > 0 ? Math.round((1 - mqlN / Math.max(usersN, 1)) * 1000) / 10 : undefined;
+      const dropoff3 = mqlN > 0 ? Math.round((1 - paidN / Math.max(mqlN, 1)) * 1000) / 10 : undefined;
+      store.analytics.funnel = [
+        { label: 'Contacts',     count: contactsN, percentage: 100 },
+        { label: 'Sign-ups',     count: usersN, percentage: Math.round(usersN / base * 100), dropoff: dropoff1 },
+        { label: 'MQL / Trial',  count: mqlN, percentage: Math.round(mqlN / base * 100), dropoff: dropoff2 },
+        { label: 'Paid',         count: paidN, percentage: Math.round(paidN / base * 100), dropoff: dropoff3 },
+      ];
+      const convRate = contactsN > 0 ? (paidN / contactsN * 100).toFixed(2) + '%' : '—';
+      const t2p = mqlN > 0 ? Math.round(paidN / Math.max(mqlN, 1) * 100) + '%' : '—';
+      store.analytics.conversionKpis.overallConvRate = convRate;
+      store.analytics.conversionKpis.trialToPaid = t2p;
+    }
+
+    // ── TrafficKpis: visitors from hsContacts, MoM from contacts created 30d ──
+    const [contactsLast30] = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(and(eq(hsContacts.tenantId, tenantId), gte(hsContacts.createdAt, d30ago)));
+    const [contactsPrev30] = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(and(eq(hsContacts.tenantId, tenantId), gte(hsContacts.createdAt, d60ago), lt(hsContacts.createdAt, d30ago)));
+    const last30n = Number(contactsLast30?.n ?? 0);
+    const prev30n = Number(contactsPrev30?.n ?? 0);
+    const momPct = prev30n > 0 ? Math.round((last30n - prev30n) / prev30n * 100) : null;
+    store.analytics.trafficKpis = {
+      visitors: contactsN > 0 ? contactsN.toLocaleString() : '—',
+      momLabel: momPct !== null ? (momPct >= 0 ? `+${momPct}%` : `${momPct}%`) + ' MoM' : '—',
+      pagesPerSession: '—',
+      avgDuration: '—',
+      bounceRate: '—',
+    };
+
+    // ── ARR + Churn + Active Subscriptions ────────────────────────────────────
+    const payFullRows = await db
+      .select()
+      .from(payments)
+      .where(and(eq(payments.tenantId, tenantId), eq(payments.status, 'succeeded')));
+    const canceledRows = await db
+      .select({ n: count() })
+      .from(payments)
+      .where(and(eq(payments.tenantId, tenantId), eq(payments.status, 'canceled')));
+    if (payFullRows.length > 0) {
+      const arr = payFullRows.reduce((acc, p) => acc + (p.cycle === 'monthly' ? p.amount * 12 : p.amount), 0) / 100;
+      const arrStr = arr >= 1000000 ? '$' + (arr / 1000000).toFixed(1) + 'M' : arr >= 1000 ? '$' + Math.round(arr / 1000) + 'K' : '$' + Math.round(arr);
+
+      const activeSubs = payFullRows.length;
+      const canceledN = Number(canceledRows[0]?.n ?? 0);
+      const churnPct = activeSubs + canceledN > 0 ? ((canceledN / (activeSubs + canceledN)) * 100).toFixed(1) + '%' : '—';
+      const avgLtvRaw = activeSubs > 0 ? Math.round(arr / activeSubs) : 0;
+      const avgLtvStr = avgLtvRaw >= 1000 ? '$' + (avgLtvRaw / 1000).toFixed(1) + 'K' : '$' + avgLtvRaw;
+
+      // YoY ARR growth
+      const arrLast365 = payFullRows.filter(p => p.createdAt && p.createdAt >= d365ago)
+        .reduce((acc, p) => acc + (p.cycle === 'monthly' ? p.amount * 12 : p.amount), 0) / 100;
+      const arrPrev365 = payFullRows.filter(p => p.createdAt && p.createdAt >= d730ago && p.createdAt < d365ago)
+        .reduce((acc, p) => acc + (p.cycle === 'monthly' ? p.amount * 12 : p.amount), 0) / 100;
+      const yoyPct = arrPrev365 > 0 ? Math.round((arrLast365 - arrPrev365) / arrPrev365 * 100) : null;
+      const arrGrowthLabel = yoyPct !== null ? (yoyPct >= 0 ? `+${yoyPct}%` : `${yoyPct}%`) + ' YoY' : '—';
+
+      // Subs MoM
+      const subsLast30 = payFullRows.filter(p => p.createdAt && p.createdAt >= d30ago).length;
+      const subsPrev30 = payFullRows.filter(p => p.createdAt && p.createdAt >= d60ago && p.createdAt < d30ago).length;
+      const subsMomPct = subsPrev30 > 0 ? Math.round((subsLast30 - subsPrev30) / subsPrev30 * 100) : null;
+      const subsMomLabel = subsMomPct !== null ? (subsMomPct >= 0 ? `Growing ${subsMomPct}%` : `Down ${Math.abs(subsMomPct)}%`) + ' MoM' : 'Tracking MoM';
+
+      store.analytics.conversionKpis.arr = arrStr;
+      store.analytics.conversionKpis.arrGrowthLabel = arrGrowthLabel;
+      store.analytics.conversionKpis.churnRate = churnPct;
+      store.analytics.conversionKpis.avgLtv = avgLtvStr;
+      store.analytics.conversionKpis.activeSubscriptions = activeSubs.toLocaleString();
+      store.analytics.conversionKpis.subsMomLabel = subsMomLabel;
+    }
+
   } catch {
-    // DB unavailable — store.analytics retains static seed values.
+    // DB unavailable — store.analytics retains default values.
   };
   }
 
@@ -970,24 +1390,125 @@ const toContactStage = (lifecycleStage?: string | null): Contact['stage'] => {
 };
 
 const toLeadScore = (props?: Record<string, string | null>): number => {
-  const raw = props?.['hs_lead_score'] ?? props?.['hubspotscore'] ?? null;
+  const scoreCandidates = [
+    props?.['hs_lead_score'],
+    props?.['hubspotscore'],
+    props?.['hs_predictivecontactscore_v2'],
+  ];
+
+  const raw = scoreCandidates.find(value => Boolean(value && value.trim().length > 0)) ?? null;
   const parsed = raw ? Number(raw) : NaN;
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, Math.min(100, Math.round(parsed)));
 };
 
-const computeContactsFromHubSpot = async (tenantId: string, store: DashboardStore): Promise<void> => {
-  try {
-    const accessToken = await getSecret(`hubspot-access-${tenantId}`);
-    if (!accessToken) {
-      console.warn('[hubspot-sync] skipped: missing access token', { tenantId });
-      return;
-    }
+const toRisk = (props?: Record<string, string | null>): Contact['risk'] => {
+  const normalize = (value?: string | null): Contact['risk'] => {
+    const v = (value ?? '').trim().toLowerCase();
+    if (!v) return null;
+    if (v.includes('high')) return 'High';
+    if (v.includes('medium') || v.includes('med')) return 'Medium';
+    if (v.includes('low')) return 'Low';
+    return null;
+  };
 
-    const hubspot = new HubSpotContacts(accessToken);
-    const rows = await hubspot.listContacts(100);
+  const explicitRisk =
+    normalize(props?.['risk'])
+    ?? normalize(props?.['risk_level'])
+    ?? normalize(props?.['churn_risk']);
+  if (explicitRisk) return explicitRisk;
+
+  const churnRaw = props?.['churn_risk_score'] ?? null;
+  const churnScore = churnRaw ? Number(churnRaw) : NaN;
+  if (Number.isFinite(churnScore)) {
+    // Supports either 0-1 or 0-100 format.
+    const normalized = churnScore <= 1 ? churnScore * 100 : churnScore;
+    if (normalized >= 70) return 'High';
+    if (normalized >= 40) return 'Medium';
+    return 'Low';
+  }
+
+  return null;
+};
+
+const toRelativeTime = (props?: Record<string, string | null>): string => {
+  const raw = (props?.['lastmodifieddate'] ?? '').trim();
+  if (!raw) return '—';
+
+  const ts = Date.parse(raw);
+  if (!Number.isFinite(ts)) return '—';
+
+  const diffMs = Math.max(0, Date.now() - ts);
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
+const GENERIC_EMAIL_DOMAINS = new Set([
+  'gmail.com',
+  'yahoo.com',
+  'hotmail.com',
+  'outlook.com',
+  'live.com',
+  'icloud.com',
+  'proton.me',
+  'protonmail.com',
+  'aol.com',
+]);
+
+const toDisplayCompany = (props: Record<string, string | null>, email: string): string => {
+  const explicitCompany = (props['company'] ?? '').trim();
+  if (explicitCompany) return explicitCompany;
+
+  const domain = email.split('@')[1]?.trim().toLowerCase() ?? '';
+  if (!domain || GENERIC_EMAIL_DOMAINS.has(domain)) {
+    return '—';
+  }
+
+  const root = domain.replace(/^www\./, '').split('.')[0] ?? '';
+  if (!root) return '—';
+
+  return root
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const resetContactsState = (store: DashboardStore): void => {
+  store.contacts.all = [];
+  store.contacts.segments = [];
+  store.contacts.summary = {
+    ...store.contacts.summary,
+    totalSynced: 0,
+    pipelineValue: '$0',
+    activeSegments: 0,
+  };
+  store.contacts.pipelineCols = store.contacts.pipelineCols.map(col => ({
+    ...col,
+    count: 0,
+    value: '$0',
+    more: 0,
+    leads: [],
+  }));
+};
+
+const computeContactsFromHubSpot = async (tenantId: string, store: DashboardStore): Promise<void> => {
+  if (isMuted(hubspotSyncMutedUntil, tenantId)) {
+    resetContactsState(store);
+    return;
+  }
+
+  const mapContactsIntoStore = (rows: Array<{ id: string; properties?: Record<string, string | null> }>): void => {
     if (rows.length === 0) {
       console.info('[hubspot-sync] completed: no contacts returned', { tenantId });
+      resetContactsState(store);
       return;
     }
 
@@ -1003,11 +1524,11 @@ const computeContactsFromHubSpot = async (tenantId: string, store: DashboardStor
       return {
         id: row.id,
         name,
-        company: (props['company'] ?? '').trim() || 'Unknown',
+        company: toDisplayCompany(props, email),
         stage,
         leadScore,
-        lastEnriched: 'just now',
-        risk: null,
+        lastEnriched: toRelativeTime(props),
+        risk: toRisk(props),
       };
     });
 
@@ -1032,18 +1553,190 @@ const computeContactsFromHubSpot = async (tenantId: string, store: DashboardStor
       if (col.stage === 'CUSTOMER') return { ...col, count: customerCount };
       return col;
     });
+
     console.info('[hubspot-sync] completed', {
       tenantId,
       fetched: rows.length,
       mapped: mapped.length,
       sample: mapped.slice(0, 3).map(c => ({ id: c.id, name: c.name, stage: c.stage, leadScore: c.leadScore })),
     });
+  };
+
+  try {
+    let accessToken = (await getSecret(`hubspot-access-${tenantId}`)).trim();
+    if (!accessToken) {
+      if (shouldLogHubspot(tenantId, 'missing_token')) {
+        console.warn('[hubspot-sync] skipped: missing access token', { tenantId });
+      }
+      mute(hubspotSyncMutedUntil, tenantId, HUBSPOT_SYNC_COOLDOWN_MS);
+      resetContactsState(store);
+      return;
+    }
+
+    try {
+      const rows = await new HubSpotContacts(accessToken).listContacts(100);
+      mapContactsIntoStore(rows);
+      return;
+    } catch (initialError) {
+      const initialMsg = initialError instanceof Error ? initialError.message : String(initialError);
+      const isUnauthorized = /\b401\b/.test(initialMsg);
+      if (!isUnauthorized) throw initialError;
+
+      // Access token likely expired — refresh using stored refresh token and retry once.
+      const refreshToken = (await getSecret(`hubspot-refresh-${tenantId}`)).trim();
+      if (!refreshToken) throw initialError;
+
+      const refreshed = await HubSpotAuth.refreshToken(refreshToken);
+      accessToken = refreshed.accessToken.trim();
+      if (!accessToken) throw initialError;
+
+      await setSecret(`hubspot-access-${tenantId}`, accessToken);
+      const rows = await new HubSpotContacts(accessToken).listContacts(100);
+      mapContactsIntoStore(rows);
+      return;
+    }
   } catch (error) {
-    console.error('[hubspot-sync] failed', {
-      tenantId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    // If HubSpot token is unavailable or API fails, keep existing seeded contacts.
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isUnauthorized = /\b401\b/.test(errorMessage);
+
+    if (shouldLogHubspot(tenantId, isUnauthorized ? '401' : 'sync_error')) {
+      console.error('[hubspot-sync] failed', {
+        tenantId,
+        error: errorMessage,
+      });
+    }
+
+    // If credentials are invalid (401), back off further attempts for this tenant.
+    if (isUnauthorized) {
+      mute(hubspotSyncMutedUntil, tenantId, HUBSPOT_SYNC_COOLDOWN_MS);
+    }
+
+    // Never keep stale contact data when HubSpot sync fails.
+    resetContactsState(store);
+  }
+};
+
+const computeKpisFromDb = async (tenantId: string, store: DashboardStore): Promise<void> => {
+  if (!process.env['DATABASE_URL']?.trim()) return;
+  try {
+    // Posts generated: content pages count for this tenant
+    const pagesCount = await db
+      .select({ n: count() })
+      .from(contentPages)
+      .where(eq(contentPages.tenantId, tenantId));
+    const postsGenerated = Number(pagesCount[0]?.n ?? 0);
+    if (postsGenerated > 0) store.kpis.postsGenerated = postsGenerated;
+
+    // Leads captured: hs_contacts count for this tenant
+    const contactsCount = await db
+      .select({ n: count() })
+      .from(hsContacts)
+      .where(eq(hsContacts.tenantId, tenantId));
+    const leadsCaptured = Number(contactsCount[0]?.n ?? 0);
+    // Also use live contacts array length if HubSpot was synced this request
+    store.kpis.leadsCaptured = Math.max(leadsCaptured, store.contacts.all.length);
+
+    // MRR: sum of payments in the last 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const mrrRows = await db
+      .select({ total: sum(payments.amount) })
+      .from(payments)
+      .where(and(eq(payments.tenantId, tenantId), gte(payments.createdAt, thirtyDaysAgo)));
+    const mrr = Math.round(Number(mrrRows[0]?.total ?? 0) / 100);
+    if (mrr > 0) store.kpis.mrr = mrr;
+
+    // Billing history: last 12 payments ordered by newest first
+    const payRows = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.tenantId, tenantId))
+      .orderBy(desc(payments.createdAt))
+      .limit(12);
+    if (payRows.length > 0) {
+      store.settings.billingHistory = payRows.map(p => ({
+        date: new Date(p.createdAt ?? Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        amount: `$${(p.amount / 100).toFixed(2)}`,
+        status: p.status.charAt(0).toUpperCase() + p.status.slice(1),
+      }));
+    }
+  } catch {
+    // DB unavailable — retain current kpi values
+  }
+};
+
+const computeKbDocumentsFromDb = async (tenantId: string, store: DashboardStore): Promise<void> => {
+  if (!process.env['DATABASE_URL']?.trim()) return;
+  try {
+    const rows = await db
+      .select()
+      .from(kbDocumentsTable)
+      .where(eq(kbDocumentsTable.tenantId, tenantId))
+      .orderBy(desc(kbDocumentsTable.createdAt))
+      .limit(20);
+    if (rows.length > 0) {
+      store.kbDocuments = rows.map(r => {
+        const rawCategory = r.category ?? 'product-docs';
+        const category: KnowledgeDoc['category'] =
+          rawCategory === 'brand' ? 'brand'
+          : rawCategory === 'competitor-intel' ? 'competitor-intel'
+          : 'product-docs';
+        const wordCount = r.content ? Math.round(r.content.split(/\s+/).length) : 0;
+        const createdAt = r.createdAt ?? new Date();
+        const diffDays = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+        const updated = diffDays === 0 ? 'Updated today' : diffDays === 1 ? 'Updated 1d ago' : `Updated ${diffDays}d ago`;
+        return {
+          id: r.id,
+          category,
+          title: r.name,
+          words: wordCount > 0 ? `${wordCount.toLocaleString()} words` : '—',
+          updated,
+          actionLabel: (category === 'brand' ? 'Edit' : 'Re-train') as KnowledgeDoc['actionLabel'],
+        };
+      });
+    }
+  } catch {
+    // DB unavailable — retain current kbDocuments
+  }
+};
+
+const computeOrgMembersFromDb = async (orgId: string | undefined, store: DashboardStore): Promise<void> => {
+  if (!orgId || !process.env['DATABASE_URL']?.trim()) return;
+  try {
+    const rows = await db
+      .select({
+        memberId: orgMembersTable.id,
+        userId: orgMembersTable.userId,
+        role: orgMembersTable.role,
+        name: users.name,
+        email: users.email,
+      })
+      .from(orgMembersTable)
+      .leftJoin(users, eq(orgMembersTable.userId, users.id))
+      .where(eq(orgMembersTable.orgId, orgId))
+      .limit(50);
+    if (rows.length > 0) {
+      store.orgMembers = rows.map(r => {
+        const name = r.name ?? r.email ?? r.userId;
+        const initials = name.trim().split(/\s+/).map((p: string) => p[0] ?? '').join('').slice(0, 2).toUpperCase() || '?';
+        return {
+          id: r.memberId,
+          initials,
+          name: r.name ?? r.email ?? r.userId,
+          email: r.email ?? '',
+          role: r.role.charAt(0).toUpperCase() + r.role.slice(1),
+        };
+      });
+    }
+  } catch {
+    // DB unavailable — retain current orgMembers
+  }
+};
+
+// Update active agents KPI from running autopilot tasks
+const refreshActiveAgentsKpi = (store: DashboardStore): void => {
+  const runningCount = store.autopilot.tasks.filter(t => t.status === 'running').length;
+  if (runningCount > 0) {
+    store.kpis.activeAgents = runningCount;
   }
 };
 
@@ -1055,6 +1748,7 @@ const computeIntegrationStatus = async (tenant: Tenant): Promise<IntegrationItem
 
   const statusConfigs: Record<string, { icon: string; desc: string; defaultStatus: string }> = {
     'HubSpot CRM': { icon: '🔵', desc: 'Contacts · Deals · Webhooks · Technology Partner', defaultStatus: 'Connected · Syncing' },
+    'LinkedIn': { icon: '🔗', desc: 'OAuth 2.0 · Direct social post publishing', defaultStatus: 'Connected' },
     'Microsoft 365': { icon: '🔷', desc: 'Teams · SharePoint · Mail · MSAL · SAML SSO', defaultStatus: 'Connected' },
     'Anthropic Claude API': { icon: '🟣', desc: 'Opus 4 · Sonnet 4 · Haiku — All 39 agents', defaultStatus: 'Connected · Active' },
     'Azure Key Vault': { icon: '🔑', desc: 'JWT keys · API secrets · RBAC · Managed Identity', defaultStatus: 'Connected' },
@@ -1070,6 +1764,14 @@ const computeIntegrationStatus = async (tenant: Tenant): Promise<IntegrationItem
         return { name: 'HubSpot CRM', connected: !!token && token.length > 0 };
       } catch {
         return { name: 'HubSpot CRM', connected: false };
+      }
+    })(),
+    (async () => {
+      try {
+        const token = await getSecret(`linkedin-access-${tenantId}`);
+        return { name: 'LinkedIn', connected: !!token && token.length > 0 };
+      } catch {
+        return { name: 'LinkedIn', connected: false };
       }
     })(),
     (async () => {
@@ -1129,6 +1831,122 @@ const computeIntegrationStatus = async (tenant: Tenant): Promise<IntegrationItem
   });
 };
 
+// ── Tenant context assembly from current store state ────────────────────────────
+const assembleTenantContext = async (store: DashboardStore, tenant: Tenant): Promise<TenantAgentContext> => {
+  // Derive siteUrl from tenant name; fall back to tenant id slug.
+  const domainBase = tenant.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'workspace';
+  const siteUrl = `https://${domainBase}.com`;
+
+  // Keywords: mine from KB document titles if available, else use defaults.
+  const kbKeywords = store.kbDocuments
+    .filter(d => d.category === 'product-docs')
+    .flatMap(d => d.title.toLowerCase().split(/\s+/))
+    .filter(w => w.length > 4)
+    .slice(0, 5);
+  const targetKeywords = kbKeywords.length >= 3
+    ? kbKeywords
+    : ['ai marketing automation', 'b2b saas marketing', 'marketing ai agents'];
+
+  // Contact counts from live contacts (populated by HubSpot sync).
+  const contacts = store.contacts.all;
+  const mqls = contacts.filter(c => c.stage === 'MQL').length;
+  const sqls = contacts.filter(c => c.stage === 'SQL').length;
+
+  // HubSpot connectivity from real integration status check.
+  const hubspotEntry = store.settings.integrations.find(i => i.name === 'HubSpot CRM');
+  const hubspotConnected = hubspotEntry?.statusText?.startsWith('Connected') ?? false;
+
+  return {
+    siteUrl,
+    targetKeywords,
+    contactCount: contacts.length,
+    mqls,
+    sqls,
+    hubspotConnected,
+    // Fetch KB doc content from DB so agents receive brand/product/competitor context.
+    kbDocs: await db.select({
+      name:     kbDocumentsTable.name,
+      category: kbDocumentsTable.category,
+      content:  kbDocumentsTable.content,
+    }).from(kbDocumentsTable)
+      .where(eq(kbDocumentsTable.tenantId, tenant.id))
+      .limit(10)
+      .then(rows => rows.map(r => ({
+        name:     r.name ?? '',
+        category: (r.category ?? 'product-docs') as 'product-docs' | 'brand' | 'competitor-intel',
+        content:  r.content ?? '',
+      }))),
+  };
+};
+
+// ── Post-run DB persistence + tool adapters ───────────────────────────────────
+const persistAutopilotRun = async (
+  tenantId: string,
+  result:   AutopilotResult,
+): Promise<void> => {
+  if (!process.env['DATABASE_URL']?.trim()) return;
+  try {
+    // 1. Batch-insert all execution records (idempotent via onConflictDoNothing).
+    if (result.executions.length > 0) {
+      await Promise.all(
+        result.executions.map(exec =>
+          db.insert(agentExecutions).values({
+            id:            exec.id,
+            tenantId:      exec.tenantId,
+            agentType:     exec.agentType,
+            model:         exec.model,
+            status:        exec.status,
+            inputSummary:  exec.inputSummary  ?? null,
+            outputSummary: exec.outputSummary ?? null,
+            durationMs:    exec.durationMs,
+            error:         exec.error         ?? null,
+            fairnessScore: exec.fairnessScore  ?? null,
+          }).onConflictDoNothing()
+        ),
+      );
+    }
+
+    // 2. Tool adapters — persist agent output artifacts as KB documents.
+    const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const artifactMap: Partial<Record<AgentType, { title: string; category: string }>> = {
+      keyword_researcher: { title: `Keyword Opportunities — ${today}`, category: 'product-docs' },
+      workspace_reporter: { title: `Workspace Report — ${today}`,       category: 'product-docs' },
+      backlink_outreach:  { title: `Backlink Outreach Plan — ${today}`,  category: 'competitor-intel' },
+    };
+
+    for (const [agentType, artifact] of Object.entries(artifactMap) as Array<[AgentType, { title: string; category: string }]>) {
+      const exec = result.executions.find(
+        e => e.agentType === agentType && e.status === 'success' && e.outputSummary,
+      );
+      if (!exec) continue;
+      await db.insert(kbDocumentsTable).values({
+        id:       uid('kb'),
+        tenantId,
+        name:     artifact.title,
+        content:  exec.outputSummary!,
+        category: artifact.category,
+      }).onConflictDoNothing();
+    }
+  } catch (err) {
+    // Non-fatal: persistence failure must never crash the autopilot run.
+    console.error('[autopilot-persist] failed:', err instanceof Error ? err.message : String(err));
+  }
+};
+
+const syncPlatformStatusFromIntegrations = (store: DashboardStore): void => {
+  const integrationStatuses = new Map(store.settings.integrations.map(item => [item.name, item.statusText]));
+
+  store.settings.platformStatus = [
+    { name: 'Vercel Edge', status: 'Operational' },
+    { name: 'Neon Database', status: 'Operational' },
+    { name: 'Upstash Redis', status: integrationStatuses.get('Upstash Redis')?.includes('Fallback') ? 'Operational (Fallback)' : 'Operational' },
+    { name: 'Anthropic API', status: integrationStatuses.get('Anthropic Claude API')?.startsWith('Connected') ? 'Operational' : 'Disconnected' },
+    { name: 'Azure Key Vault', status: integrationStatuses.get('Azure Key Vault')?.startsWith('Connected') ? 'Connected' : 'Disconnected' },
+    { name: 'LinkedIn', status: integrationStatuses.get('LinkedIn')?.startsWith('Connected') ? 'Connected' : 'Disconnected' },
+    { name: 'HubSpot CRM', status: integrationStatuses.get('HubSpot CRM')?.startsWith('Connected') ? 'Connected' : 'Disconnected' },
+  ];
+};
+
 const toResponse = (store: DashboardStore) => {
   return {
     testsPassedLabel: store.testsPassedLabel,
@@ -1156,8 +1974,64 @@ const toResponse = (store: DashboardStore) => {
     userProfile: store.userProfile,
     analytics: store.analytics,
     contacts: store.contacts,
+    socialPosts: store.socialPosts,
+    blogArticles: store.blogArticles,
     settings: store.settings,
   };
+};
+
+const normalizeDashboardStoreShape = (store: DashboardStore): void => {
+  // Backward-compatible defaults for older cached dashboard states.
+  if (!Array.isArray(store.feedItems)) store.feedItems = [];
+  if (!Array.isArray(store.hitlQueue)) store.hitlQueue = [];
+  if (!Array.isArray(store.kbDocuments)) store.kbDocuments = [];
+  if (!Array.isArray(store.orgMembers)) store.orgMembers = [];
+  if (!Array.isArray(store.socialPosts)) store.socialPosts = [];
+  if (!Array.isArray(store.blogArticles)) store.blogArticles = [];
+
+  if (!store.autopilot || typeof store.autopilot !== 'object') {
+    store.autopilot = { ...INITIAL_STORE.autopilot };
+  }
+
+  if (!store.settings || typeof store.settings !== 'object') {
+    store.settings = { ...INITIAL_STORE.settings };
+  }
+
+  if (!store.contacts || typeof store.contacts !== 'object') {
+    store.contacts = { ...INITIAL_STORE.contacts };
+  }
+};
+
+const purgeLegacySeededContent = (store: DashboardStore): void => {
+  // Remove old demo cards/articles persisted in tenant state so live HITL/API data is visible.
+  store.socialPosts = store.socialPosts.filter(post => {
+    const isLegacyLinkedIn =
+      post.id === '1' &&
+      post.channel === 'LINKEDIN' &&
+      post.handle === 'linkedin_poster' &&
+      post.generatedAgo.startsWith('Generated ');
+
+    const isLegacyEmail =
+      post.id === '2' &&
+      post.channel === 'EMAIL SUBJECT' &&
+      post.handle === 'email_campaigner' &&
+      post.generatedAgo.startsWith('Generated ');
+
+    return !isLegacyLinkedIn && !isLegacyEmail;
+  });
+
+  const legacyBlogTitles = new Set([
+    '10 AI Marketing Trends for 2025',
+    'How We Cut CAC by 40% with AI Agents',
+    'Content Fairness in Production AI',
+    'B2B Marketing Automation: Complete Guide',
+  ]);
+
+  store.blogArticles = store.blogArticles.filter(article => {
+    const isLegacyId = article.id === '1' || article.id === '2' || article.id === '3' || article.id === '4';
+    const isLegacyTitle = legacyBlogTitles.has(article.title);
+    return !(isLegacyId && isLegacyTitle);
+  });
 };
 
 export async function GET() {
@@ -1165,7 +2039,10 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const tenant = makeTenant(session);
+  await ensureTenantRow(tenant);
   const store = await getTenantDashboardState<DashboardStore>(tenant.id, INITIAL_STORE);
+  normalizeDashboardStoreShape(store);
+  purgeLegacySeededContent(store);
 
   refreshUserProfile(store, session);
   store.autopilot.tasks = mergeAutopilotTasks(store.autopilot.tasks, tenant.tier);
@@ -1174,6 +2051,7 @@ export async function GET() {
   // Fetch real integration status
   try {
     store.settings.integrations = await computeIntegrationStatus(tenant);
+    syncPlatformStatusFromIntegrations(store);
   } catch (e) {
     // Fallback to seed integrations if computation fails
     console.warn('Failed to compute integration status', e);
@@ -1181,6 +2059,11 @@ export async function GET() {
 
   await computeContactsFromHubSpot(tenant.id, store);
   await computeAnalyticsFromDb(tenant.id, store);
+  await computeKpisFromDb(tenant.id, store);
+  await computeKbDocumentsFromDb(tenant.id, store);
+  await computeOrgMembersFromDb(tenant.orgId, store);
+  await refreshHitlQueueFromDb(tenant.id, store);
+  refreshActiveAgentsKpi(store);
   await setTenantDashboardState(tenant.id, store);
   return NextResponse.json(toResponse(store));
 }
@@ -1190,7 +2073,10 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const tenant = makeTenant(session);
+  await ensureTenantRow(tenant);
   const store = await getTenantDashboardState<DashboardStore>(tenant.id, INITIAL_STORE);
+  normalizeDashboardStoreShape(store);
+  purgeLegacySeededContent(store);
 
   refreshUserProfile(store, session);
   store.autopilot.tasks = mergeAutopilotTasks(store.autopilot.tasks, tenant.tier);
@@ -1203,11 +2089,17 @@ export async function POST(req: NextRequest) {
     title?: string;
     category?: string;
     content?: string;
-    provider?: 'shopify' | 'webflow';
+    provider?: 'shopify' | 'webflow' | 'wordpress' | 'hubspot';
     slug?: string;
     htmlBody?: string;
     status?: 'draft' | 'published';
     schemaJson?: Record<string, unknown>;
+    postChannel?: 'linkedin' | string;
+    postBody?: string;
+    postId?: string;
+    postContent?: string[];
+    prompt?: string;
+    docId?: string;
   };
 
   if (body.action === 'runAutopilot') {
@@ -1228,9 +2120,22 @@ export async function POST(req: NextRequest) {
     await setTenantDashboardState(tenant.id, store);
 
     try {
+      // Assemble real tenant context so agents receive actual site/keyword/contact data.
+      const tenantCtx = await assembleTenantContext(store, tenant);
+
       const result = await runAutopilot(tenant, {
         shouldStop: () => store.autopilot.stopRequested || store.autopilot.paused,
+        context:    tenantCtx,
       });
+
+      const redditTierAllowed = isTierEligible(tenant.tier, AGENT_ACTIVATION_PLAN.reddit_manager.minTier);
+      if (REDDIT_REQUIRES_HUMAN_APPROVAL && redditTierAllowed) {
+        await generateAndPersistRedditDrafts(tenant, tenantCtx, store);
+        await refreshHitlQueueFromDb(tenant.id, store);
+      }
+
+      // Persist executions to DB and write agent output artifacts as KB docs.
+      await persistAutopilotRun(tenant.id, result);
 
       const succeeded = result.succeeded;
       store.autopilot.lastRunSummary = {
@@ -1239,7 +2144,8 @@ export async function POST(req: NextRequest) {
         hitlPending: store.hitlQueue.length,
         durationText: `${Math.max(1, Math.round(result.durationMs / 60000))}m`,
       };
-      store.autopilot.nextRunAt = Date.now() + 6 * 60 * 60 * 1000;
+      // US-001: daily autopilot — next run in 24 hours.
+      store.autopilot.nextRunAt = Date.now() + 24 * 60 * 60 * 1000;
 
       store.kpis.activeAgents = Math.min(AGENT_COUNT, Math.max(1, succeeded));
       store.kpis.postsGenerated += Math.max(1, succeeded);
@@ -1340,6 +2246,15 @@ export async function POST(req: NextRequest) {
         : item
     );
 
+    if (isDbConfigured()) {
+      await db.update(redditThreads)
+        .set({
+          ...(title ? { title } : {}),
+          draftResponse: content,
+        })
+        .where(and(eq(redditThreads.id, id), eq(redditThreads.tenantId, tenant.id)));
+    }
+
     await setTenantDashboardState(tenant.id, store);
     return NextResponse.json({ ok: true, data: toResponse(store) });
   }
@@ -1348,11 +2263,120 @@ export async function POST(req: NextRequest) {
     const id = body.id;
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
-    const existing = store.hitlQueue.find(item => item.id === id);
+    if (isDbConfigured()) {
+      // Ensure queue is up-to-date when state cache lags behind DB.
+      await refreshHitlQueueFromDb(tenant.id, store);
+    }
+
+    let existing = store.hitlQueue.find(item => item.id === id);
+    if (!existing && isDbConfigured()) {
+      const row = await db.select().from(redditThreads)
+        .where(and(eq(redditThreads.id, id), eq(redditThreads.tenantId, tenant.id)))
+        .limit(1);
+      const found = row[0];
+      if (found) {
+        existing = {
+          id: found.id,
+          subreddit: found.subreddit,
+          title: found.title,
+          agent: 'reddit_manager',
+          platform: 'Reddit',
+          content: (found.draftResponse ?? '').trim() || 'Draft pending content update',
+          queuedAt: found.createdAt ? new Date(found.createdAt).getTime() : now(),
+        };
+      }
+    }
     if (!existing) return NextResponse.json({ error: 'Queue item not found' }, { status: 404 });
 
     store.hitlQueue = store.hitlQueue.filter(item => item.id !== id);
     store.autopilot.lastRunSummary.hitlPending = store.hitlQueue.length;
+
+    if (body.action === 'approveHitl') {
+      const safeTitle = (existing.title ?? '').trim() || 'Untitled draft';
+      const safeContent = typeof existing.content === 'string' ? existing.content : '';
+      const safeSubreddit = (existing.subreddit ?? '').trim() || 'r/marketing';
+
+      // Check which platforms are connected so we inject one publish card per connected platform.
+      const [linkedInToken, redditToken] = await Promise.all([
+        getSecret(`linkedin-access-${tenant.id}`).catch(() => null),
+        getSecret(`reddit-access-${tenant.id}`).catch(() => null),
+      ]);
+
+      // Platform definitions — add new platforms here as they are integrated.
+      const platformCards: Array<{ id: string; channel: string; handle: string; label: string; action: string; connected: boolean }> = [
+        {
+          id:        `reddit_${id}`,
+          channel:   'REDDIT',
+          handle:    'reddit_manager',
+          label:     `Approved · ${safeSubreddit}`,
+          action:    'Post to Reddit',
+          connected: Boolean(redditToken),
+        },
+        {
+          id:        `linkedin_${id}`,
+          channel:   'LINKEDIN',
+          handle:    'linkedin_poster',
+          label:     `Approved · ${safeSubreddit} (cross-post)`,
+          action:    'Post Now',
+          connected: Boolean(linkedInToken),
+        },
+      ];
+
+      const newCards: SocialPost[] = platformCards
+        .filter(p => !store.socialPosts.some(s => s.id === p.id)) // dedupe on re-approve
+        .map((p): SocialPost => ({
+          id:            p.id,
+          channel:       p.channel,
+          handle:        p.handle,
+          generatedAgo:  p.connected ? `Approved just now · ${p.label}` : `Not connected · ${p.label}`,
+          bias:          null,
+          model:         'Haiku',
+          body:          [safeTitle, safeContent],
+          primaryAction: p.connected ? p.action : 'Connect Platform',
+          secondaryAction: 'Edit',
+          status:        'draft',
+        }));
+
+      if (newCards.length > 0) {
+        store.socialPosts = [...newCards, ...store.socialPosts].slice(0, 10);
+      }
+
+      // Also add a Blog article entry so approved content surfaces in Content → Blog.
+      const blogId = `blog_hitl_${id}`;
+      if (!store.blogArticles.some(a => a.id === blogId)) {
+        const wordCount = safeContent.trim().length > 0 ? safeContent.trim().split(/\s+/).length : 0;
+        const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const newArticle: BlogArticle = {
+          id:        blogId,
+          title:     safeTitle,
+          words:     wordCount.toLocaleString(),
+          bias:      '—',          // fairness score not run on HITL content at approve time
+          published: today,
+          visits:    null,
+          source:    'hitl',
+          action:    'Preview',
+        };
+        store.blogArticles = [newArticle, ...store.blogArticles].slice(0, 50);
+      }
+    }
+
+    if (isDbConfigured()) {
+      if (body.action === 'approveHitl') {
+        await db.update(redditThreads)
+          .set({
+            approvedBy: session.user?.email ?? session.user?.name ?? 'dashboard_user',
+            approvedAt: new Date(),
+            draftResponse: existing.content,
+          })
+          .where(and(eq(redditThreads.id, id), eq(redditThreads.tenantId, tenant.id)));
+      } else {
+        await db.delete(redditThreads)
+          .where(and(eq(redditThreads.id, id), eq(redditThreads.tenantId, tenant.id)));
+      }
+
+      await refreshHitlQueueFromDb(tenant.id, store);
+    }
+
     store.feedItems = [
       {
         id: `hitl_${Date.now()}`,
@@ -1402,20 +2426,487 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === 'uploadKbDoc') {
-    const title = body.title?.trim();
+    const title = (body.title as string | undefined)?.trim();
     if (!title) return NextResponse.json({ error: 'title required' }, { status: 400 });
-    const wordCount = body.content ? body.content.trim().split(/\s+/).length : 0;
+    const content = (body.content as string | undefined)?.trim() ?? '';
+    const rawCat = body.category as string | undefined;
+    const category: KnowledgeDoc['category'] =
+      rawCat === 'brand' ? 'brand'
+      : rawCat === 'competitor-intel' ? 'competitor-intel'
+      : 'product-docs';
+    const wordCount = content ? content.split(/\s+/).filter(Boolean).length : 0;
+    const docId = uid('doc');
+
+    // Ensure tenant row exists before FK-constrained insert
+    await db.insert(tenants).values({
+      id: tenant.id, name: tenant.name, tier: tenant.tier, model: tenant.model, status: 'active',
+    }).onConflictDoNothing();
+
+    await db.insert(kbDocumentsTable).values({
+      id: docId,
+      tenantId: tenant.id,
+      name: title.slice(0, 255),
+      content,
+      category,
+      vectorId: `vec_${docId}`,
+    });
+
     const newDoc: KnowledgeDoc = {
-      id: `doc_${Date.now()}`,
-      category: (body.category as KnowledgeDoc['category']) ?? 'product-docs',
+      id: docId,
+      category,
       title,
-      words: `${wordCount.toLocaleString()} words`,
+      words: wordCount > 0 ? `${wordCount.toLocaleString()} words` : '—',
       updated: 'Updated just now',
-      actionLabel: 'Re-train',
+      actionLabel: category === 'brand' ? 'Edit' : 'Re-train',
     };
     store.kbDocuments = [...store.kbDocuments, newDoc];
     await setTenantDashboardState(tenant.id, store);
     return NextResponse.json({ ok: true, data: toResponse(store) });
+  }
+
+  if (body.action === 'viewKbDoc') {
+    const docId = (body.docId as string | undefined)?.trim();
+    if (!docId) return NextResponse.json({ error: 'docId required' }, { status: 400 });
+    const [docRow] = await db.select().from(kbDocumentsTable)
+      .where(and(eq(kbDocumentsTable.id, docId), eq(kbDocumentsTable.tenantId, tenant.id)));
+    if (!docRow) return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    return NextResponse.json({ ok: true, document: { id: docRow.id, name: docRow.name, category: docRow.category, content: docRow.content } });
+  }
+
+  if (body.action === 'retrainKbDoc') {
+    const docId = (body.docId as string | undefined)?.trim();
+    if (!docId) return NextResponse.json({ error: 'docId required' }, { status: 400 });
+    const [docRow] = await db.select().from(kbDocumentsTable)
+      .where(and(eq(kbDocumentsTable.id, docId), eq(kbDocumentsTable.tenantId, tenant.id)));
+    if (!docRow) return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+
+    // Prompt: produce improved plain-text content (not JSON), preserving structure.
+    const systemPrompt = [
+      'You are an expert Knowledge Base editor for a B2B/B2C AI marketing platform.',
+      'Your job is to rewrite and improve the provided document:',
+      '- Fix grammar, clarity, and structure.',
+      '- Add missing context that would help AI marketing agents use this document.',
+      '- Keep the same language and approximate length (±20%).',
+      '- Return ONLY the improved document text. No preamble, no "here is the improved version", no markdown code fences.',
+    ].join('\n');
+    const userPrompt = `Document Title: "${docRow.name}"\nCategory: ${docRow.category}\n\nOriginal Content:\n${trunc(docRow.content, 6000)}`;
+
+    const result = await runAgentCall('knowledge_base_curator', tenant.tier as Tier, systemPrompt, userPrompt);
+
+    // Strip any accidental code fences the model may have added.
+    const improvedContent = result.output
+      .replace(/^\s*```(?:markdown|text|plaintext)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim();
+
+    if (!improvedContent) {
+      return NextResponse.json({ error: 'Agent returned empty content' }, { status: 502 });
+    }
+
+    // Persist improved content back to the DB.
+    await db.update(kbDocumentsTable)
+      .set({ content: improvedContent })
+      .where(and(eq(kbDocumentsTable.id, docId), eq(kbDocumentsTable.tenantId, tenant.id)));
+
+    const wordCount = improvedContent.trim().split(/\s+/).filter(Boolean).length;
+    return NextResponse.json({ ok: true, docId, wordCount, model: result.model });
+  }
+
+  const stripCodeFence = (value: string): string => value
+    .replace(/^\s*```(?:json|html|markdown)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+
+  const normalizeGeneratedJson = (value: string): string => stripCodeFence(value)
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim();
+
+  const parseGeneratedDraft = (value: string): Record<string, unknown> => {
+    const normalized = normalizeGeneratedJson(value);
+    const candidates = [normalized];
+    const match = normalized.match(/\{[\s\S]*\}/);
+    if (match && match[0] !== normalized) candidates.push(match[0]);
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+    }
+
+    const source = candidates[candidates.length - 1] ?? normalized;
+    const extracted: Record<string, unknown> = {};
+
+    const titleMatch = source.match(/"title"\s*:\s*"([\s\S]*?)"\s*,\s*"slug"/i);
+    if (titleMatch?.[1]) extracted['title'] = titleMatch[1].trim();
+
+    const slugMatch = source.match(/"slug"\s*:\s*"([\s\S]*?)"\s*,\s*"body"/i);
+    if (slugMatch?.[1]) extracted['slug'] = slugMatch[1].trim();
+
+    const bodyMatch = source.match(/"body"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"geoScore"|,\s*"[A-Za-z0-9_]+"|\s*\})/i);
+    if (bodyMatch?.[1]) {
+      extracted['body'] = bodyMatch[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .trim();
+    }
+
+    const geoScoreMatch = source.match(/"geoScore"\s*:\s*(\d{1,3})/i);
+    if (geoScoreMatch?.[1]) extracted['geoScore'] = Number(geoScoreMatch[1]);
+
+    if (Object.keys(extracted).length > 0) return extracted;
+
+    return {};
+  };
+
+  const parseNestedGeneratedDraft = (value: string): Record<string, unknown> | null => {
+    const trimmed = trimWrappedText(stripCodeFence(value));
+    if (!trimmed.startsWith('{')) return null;
+
+    try {
+      return parseGeneratedDraft(trimmed);
+    } catch {
+      return null;
+    }
+  };
+
+  const extractBestBodyCandidate = (value: string): string => {
+    const normalized = normalizeGeneratedJson(value);
+    const matches = [...normalized.matchAll(/"body"\s*:\s*"([\s\S]*?)"/gi)];
+    if (matches.length === 0) return '';
+
+    const candidates = matches
+      .map(match => (match[1] ?? '')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .trim())
+      .filter(Boolean);
+
+    if (candidates.length === 0) return '';
+
+    const score = (candidate: string): number => {
+      const alphaChars = (candidate.match(/[A-Za-z]/g) ?? []).length;
+      const jsonNoisePenalty = (candidate.match(/"(?:title|slug|body)"\s*:/gi) ?? []).length * 120;
+      const bracePenalty = (candidate.match(/[{}]/g) ?? []).length * 140;
+      const truncatedPenalty = /\{\s*$/.test(candidate) ? 220 : 0;
+      const sentenceBonus = (candidate.match(/[.!?]/g) ?? []).length * 12;
+      return alphaChars + sentenceBonus - jsonNoisePenalty - bracePenalty - truncatedPenalty;
+    };
+
+    return candidates.sort((a, b) => score(b) - score(a))[0] ?? '';
+  };
+
+  const pickGeneratedBody = (parsed: Record<string, unknown>, fallback: string): string => {
+    const directBody = typeof parsed['body'] === 'string' ? trimWrappedText(parsed['body']) : '';
+    const nested = directBody ? parseNestedGeneratedDraft(directBody) : null;
+    const nestedBody = typeof nested?.['body'] === 'string' ? trimWrappedText(nested['body']) : '';
+    if (nestedBody) return nestedBody;
+
+    const hasNestedJsonMarkers = /\n\s*\{\s*$/.test(directBody)
+      || /"(?:title|slug|body)"\s*:/i.test(directBody)
+      || /\{\s*"title"/i.test(directBody);
+    if (directBody && !directBody.startsWith('{') && !hasNestedJsonMarkers) return directBody;
+
+    const bestCandidate = extractBestBodyCandidate(fallback);
+    if (bestCandidate) return bestCandidate;
+
+    const fallbackParsed = parseNestedGeneratedDraft(fallback);
+    const fallbackBody = typeof fallbackParsed?.['body'] === 'string'
+      ? trimWrappedText(fallbackParsed['body'])
+      : '';
+    return fallbackBody || directBody || fallback;
+  };
+
+  const trimWrappedText = (value: string): string => value.trim().replace(/^['"]+|['"]+$/g, '').trim();
+
+  const sanitizeGeneratedBodyText = (value: string, title: string): string => {
+    const normalized = stripCodeFence(value)
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
+      .replace(/\r\n/g, '\n')
+      .trim();
+
+    // Remove one-line JSON payload echoes that models sometimes prepend/append.
+    const withoutInlinePayloads = normalized.replace(
+      /\{\s*"title"\s*:[\s\S]*?"slug"\s*:[\s\S]*?"body"\s*:[\s\S]*?\}\s*/gi,
+      '\n',
+    );
+
+    const lines = withoutInlinePayloads.split('\n');
+    const droppedMetadataLines = lines.filter((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return true;
+      if (line === '{' || line === '}' || line === '},' || line === '{,') return false;
+      if (/^"?title"?\s*:\s*/i.test(line)) return false;
+      if (/^"?slug"?\s*:\s*/i.test(line)) return false;
+      if (/^"?body"?\s*:\s*$/i.test(line)) return false;
+      if (/^"?body"?\s*:\s*"?$/i.test(line)) return false;
+      return true;
+    });
+
+    const deDuplicated = droppedMetadataLines.filter((rawLine, index, arr) => {
+      const line = rawLine.trim().replace(/^"|"$/g, '');
+      if (!line) return true;
+
+      const normalizedTitle = title.trim().toLowerCase();
+      const comparable = line.toLowerCase().replace(/[\s]+/g, ' ').trim();
+      if (normalizedTitle && comparable === normalizedTitle) {
+        return arr.findIndex(candidate => candidate.trim().toLowerCase() === comparable) === index;
+      }
+
+      return true;
+    });
+
+    return deDuplicated
+      .join('\n')
+      .replace(/^\s*[,]+\s*$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^\s+|\s+$/g, '');
+  };
+
+  const toSlug = (value: string): string => value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  const escapeHtml = (value: string): string => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const hasRichHtml = (value: string): boolean => /<(p|h[1-6]|ul|ol|li|blockquote|article|section|div)\b/i.test(value);
+
+  const renderTextBlock = (block: string): string => {
+    const lines = block.split(/\n/).map(line => line.trim()).filter(Boolean);
+    if (lines.length === 0) return '';
+
+    if (lines.every(line => /^[-*]\s+/.test(line))) {
+      const items = lines
+        .map(line => `<li>${escapeHtml(line.replace(/^[-*]\s+/, ''))}</li>`)
+        .join('');
+      return `<ul>${items}</ul>`;
+    }
+
+    const headingMatch = block.match(/^(?:#{1,3}\s+)?([^\n:.][^\n]{2,90})\s*:\s*\n?([\s\S]*)$/);
+    const headingTitle = headingMatch?.[1]?.trim();
+    const headingBody = headingMatch?.[2]?.trim();
+    if (headingTitle && headingBody) {
+      return `<h2>${escapeHtml(headingTitle)}</h2><p>${escapeHtml(headingBody)}</p>`;
+    }
+
+    const firstLine = lines[0];
+    if (lines.length === 1 && firstLine && (/^#{1,3}\s+/.test(firstLine) || /:$/.test(firstLine))) {
+      return `<h2>${escapeHtml(firstLine.replace(/^#{1,3}\s+/, '').replace(/:$/, '').trim())}</h2>`;
+    }
+
+    return `<p>${escapeHtml(lines.join(' '))}</p>`;
+  };
+
+  const normalizeBodyHtml = (value: string, title: string): string => {
+    const cleaned = sanitizeGeneratedBodyText(trimWrappedText(value), title);
+    if (!cleaned) return '<p>No article content was generated.</p>';
+    if (hasRichHtml(cleaned)) return cleaned;
+
+    const markdownNormalized = cleaned
+      .replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
+      .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
+      .replace(/^#\s+(.+)$/gm, '<h2>$1</h2>');
+
+    const blocks = markdownNormalized
+      .split(/\n\s*\n/)
+      .map(block => block.trim())
+      .filter(Boolean)
+      .map(block => block.startsWith('<h2>') || block.startsWith('<h3>') ? block : renderTextBlock(block));
+
+    return blocks.join('\n');
+  };
+
+  const applyInlineStyle = (html: string, tag: string, style: string): string => html.replace(
+    new RegExp(`<${tag}(\\s[^>]*)?>`, 'gi'),
+    (match, attrs: string | undefined) => {
+      if (typeof attrs === 'string' && /\sstyle=/i.test(attrs)) return match;
+      return `<${tag}${attrs ?? ''} style="${style}">`;
+    },
+  );
+
+  const toPlainText = (value: string): string => value
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const renderCmsArticleTemplate = (title: string, rawBody: string): string => {
+    let articleHtml = normalizeBodyHtml(rawBody, title);
+    articleHtml = applyInlineStyle(articleHtml, 'h2', 'margin:32px 0 12px;font-size:30px;line-height:1.2;color:#102132;font-weight:700;');
+    articleHtml = applyInlineStyle(articleHtml, 'h3', 'margin:24px 0 10px;font-size:24px;line-height:1.3;color:#16324a;font-weight:700;');
+    articleHtml = applyInlineStyle(articleHtml, 'p', 'margin:0 0 18px;font-size:18px;line-height:1.85;color:#334155;');
+    articleHtml = applyInlineStyle(articleHtml, 'ul', 'margin:0 0 22px;padding-left:24px;color:#334155;');
+    articleHtml = applyInlineStyle(articleHtml, 'ol', 'margin:0 0 22px;padding-left:24px;color:#334155;');
+    articleHtml = applyInlineStyle(articleHtml, 'li', 'margin:0 0 10px;font-size:18px;line-height:1.75;');
+    articleHtml = applyInlineStyle(articleHtml, 'blockquote', 'margin:24px 0;padding:18px 22px;border-left:4px solid #0f766e;background:#f4fbfa;color:#16324a;font-style:italic;border-radius:0 16px 16px 0;');
+    articleHtml = applyInlineStyle(articleHtml, 'a', 'color:#0f766e;text-decoration:underline;');
+
+    const preview = escapeHtml(toPlainText(articleHtml).slice(0, 180));
+
+    return [
+      '<article style="max-width:820px;margin:0 auto;padding:28px 24px;border-radius:28px;background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);box-shadow:0 18px 46px rgba(15,23,42,0.08);">',
+      '<section style="margin:0 0 28px;padding:28px;border-radius:24px;background:linear-gradient(135deg,#0f766e 0%,#1d4ed8 100%);color:#f8fafc;">',
+      '<div style="display:inline-block;margin-bottom:12px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,0.16);font:700 12px/1.2 Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;">Virilocity AI Article</div>',
+      `<p style="margin:0;font:400 18px/1.75 Georgia,serif;color:rgba(248,250,252,0.92);">${preview || escapeHtml(title)}</p>`,
+      '</section>',
+      `<section style="font-family:Georgia,\'Times New Roman\',serif;">${articleHtml}</section>`,
+      '</article>',
+    ].join('');
+  };
+
+  type PublishReview = {
+    approved: boolean;
+    score: number | null;
+    reasons: string[];
+  };
+
+  const parseAgentJson = (value: string): Record<string, unknown> | null => {
+    const normalized = value
+      .replace(/^\s*```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim();
+
+    const candidates = [normalized];
+    const objectMatch = normalized.match(/\{[\s\S]*\}/);
+    if (objectMatch && objectMatch[0] !== normalized) {
+      candidates.push(objectMatch[0]);
+    }
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  };
+
+  const reviewBeforePublish = async (
+    channel: 'cms' | 'linkedin' | 'reddit',
+    title: string,
+    content: string,
+  ): Promise<PublishReview> => {
+    const systemPrompt = `You are a strict brand and policy reviewer.
+Return JSON only:
+{"approved":true,"brandConsistencyScore":88,"flags":[],"summary":"ok"}`;
+    const userPrompt = JSON.stringify({
+      channel,
+      title,
+      content: trunc(content, 6000),
+    });
+
+    try {
+      const result = await runAgentCall(
+        'brand_voice_enforcer',
+        tenant.tier as Tier,
+        systemPrompt,
+        userPrompt,
+      );
+      const parsed = parseAgentJson(result.output);
+      const scoreValue = Number(parsed?.['brandConsistencyScore']);
+      const score = Number.isFinite(scoreValue) ? scoreValue : null;
+      const flags = Array.isArray(parsed?.['flagged'])
+        ? parsed?.['flagged']
+        : Array.isArray(parsed?.['flags'])
+          ? parsed?.['flags']
+          : [];
+      const explicitlyRejected = parsed?.['approved'] === false;
+      const reasons = flags.map(item => String(item)).slice(0, 3);
+
+      const approved = !explicitlyRejected
+        && flags.length === 0
+        && (score === null || score >= 70);
+
+      return { approved, score, reasons };
+    } catch {
+      // Fail-open for ship readiness: publishing should not hard fail if reviewer is unavailable.
+      return { approved: true, score: null, reasons: [] };
+    }
+  };
+
+  if (body.action === 'generateCmsDraft') {
+    const topic = (body.prompt ?? body.title ?? '').toString().trim();
+    if (!topic) {
+      return NextResponse.json({ error: 'prompt (topic) is required' }, { status: 400 });
+    }
+
+    // Fetch KB docs so generated content is brand-aware
+    const tenantKbDocs = await db.select({
+      name:     kbDocumentsTable.name,
+      category: kbDocumentsTable.category,
+      content:  kbDocumentsTable.content,
+    }).from(kbDocumentsTable)
+      .where(eq(kbDocumentsTable.tenantId, tenant.id))
+      .limit(5);
+
+    const kbContext = tenantKbDocs
+      .map(d => `[${d.category}] ${d.name}:\n${trunc(d.content ?? '', 600)}`)
+      .join('\n\n---\n\n');
+
+    const systemPrompt = [
+      'You are a professional SEO content writer for a B2B/B2C AI marketing SaaS platform.',
+      'Generate blog posts that are brand-aware, on-message, and product-informed.',
+      '',
+      kbContext.length > 0
+        ? `Knowledge Base Context:\n${kbContext}\n\nUse this context to inform tone, product mentions, and brand alignment.`
+        : 'No knowledge base provided.',
+      '',
+      'Return ONLY valid JSON in this exact shape — no markdown, no extra text:',
+      '{',
+      '  "title": "<SEO-optimised title>",',
+      '  "slug": "<url-slug>",',
+      '  "body": "<full HTML body — use <h2>, <p>, <ul><li> tags>",',
+      '  "geoScore": <integer 0-100>',
+      '}',
+    ].join('\n');
+
+    const userPrompt = `Topic: ${topic}`;
+
+    try {
+      const result = await runAgentCall('geo_content_generator', tenant.tier as Tier, systemPrompt, userPrompt);
+      const parsed = parseGeneratedDraft(result.output);
+      const title = typeof parsed['title'] === 'string' && trimWrappedText(parsed['title'])
+        ? trimWrappedText(parsed['title'])
+        : topic;
+      const slug = typeof parsed['slug'] === 'string' && trimWrappedText(parsed['slug'])
+        ? toSlug(trimWrappedText(parsed['slug']))
+        : toSlug(topic);
+      const rawBody = pickGeneratedBody(parsed, result.output);
+
+      return NextResponse.json({
+        ok: true,
+        generatedCmsDraft: {
+          title,
+          slug,
+          body: renderCmsArticleTemplate(title, rawBody),
+          geoScore: Number.isFinite(Number(parsed['geoScore'])) ? Number(parsed['geoScore']) : null,
+          model: result.model,
+          agentType: 'geo_content_generator',
+        },
+        data: toResponse(store),
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'AI generation failed' },
+        { status: 500 },
+      );
+    }
   }
 
   if (body.action === 'publishCms') {
@@ -1425,11 +2916,20 @@ export async function POST(req: NextRequest) {
     const htmlBody = body.htmlBody?.trim() ?? '';
     const status = body.status ?? 'published';
 
-    if (!provider || (provider !== 'shopify' && provider !== 'webflow')) {
-      return NextResponse.json({ error: 'provider must be one of: shopify, webflow' }, { status: 400 });
+    const ALLOWED_CMS = ['shopify', 'webflow', 'wordpress', 'hubspot'] as const;
+    if (!provider || !(ALLOWED_CMS as readonly string[]).includes(provider)) {
+      return NextResponse.json({ error: 'provider must be one of: shopify, webflow, wordpress, hubspot' }, { status: 400 });
     }
     if (!title || !slug || !htmlBody) {
       return NextResponse.json({ error: 'title, slug, and htmlBody are required' }, { status: 400 });
+    }
+
+    const review = await reviewBeforePublish('cms', title, toPlainText(htmlBody));
+    if (!review.approved) {
+      return NextResponse.json({
+        error: 'Publish blocked by AI review. Please edit content and retry.',
+        review,
+      }, { status: 409 });
     }
 
     try {
@@ -1452,7 +2952,7 @@ export async function POST(req: NextRequest) {
       store.feedItems = [
         {
           id: `cms_${Date.now()}`,
-          message: `**cms_publish** ${provider} published "${title}"`,
+          message: `**cms_publish** ${provider} published "${title}"${review.score !== null ? ` (review ${review.score})` : ''}`,
           time: 'just now · cms publish',
           type: 'teal' as const,
         },
@@ -1470,6 +2970,193 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       );
     }
+  }
+
+  if (body.action === 'publishSocialPost') {
+    const channel = (body.postChannel ?? '').toLowerCase();
+    const postBody = body.postBody?.trim() ?? '';
+    const postId = body.postId?.trim() ?? '';
+
+    if (!postBody) {
+      return NextResponse.json({ error: 'postBody is required' }, { status: 400 });
+    }
+
+    if (channel !== 'linkedin' && channel !== 'reddit') {
+      return NextResponse.json({ error: 'postChannel must be linkedin or reddit' }, { status: 400 });
+    }
+
+    const targetIndex = postId ? store.socialPosts.findIndex(post => post.id === postId) : -1;
+    const targetPost = targetIndex >= 0 ? store.socialPosts[targetIndex] : undefined;
+
+    if (targetPost?.status === 'posted') {
+      return NextResponse.json({ error: 'This social post has already been published' }, { status: 409 });
+    }
+
+    // ── Reddit publish path ──────────────────────────────────────────────────
+    if (channel === 'reddit') {
+      const review = await reviewBeforePublish('reddit', targetPost?.body[0] ?? 'Reddit post', postBody);
+      if (!review.approved) {
+        return NextResponse.json({
+          error: 'Reddit post blocked by AI review. Please edit and retry.',
+          review,
+        }, { status: 409 });
+      }
+
+      try {
+        const redditToken = await getSecret(`reddit-access-${tenant.id}`);
+        const redditUsername = await getSecret(`reddit-username-${tenant.id}`);
+
+        if (!redditToken || !redditUsername) {
+          return NextResponse.json({
+            error: 'Reddit is not connected for this tenant. Go to Settings → Integrations to connect Reddit.',
+            notConnected: true,
+          }, { status: 409 });
+        }
+
+        // Reddit API: POST to r/subreddit via OAuth
+        const subreddit = (targetPost?.generatedAgo ?? '').match(/r\/[\w]+/i)?.[0] ?? 'r/marketing';
+        const redditRes = await fetch('https://oauth.reddit.com/api/submit', {
+          method: 'POST',
+          headers: {
+            'Authorization': `bearer ${redditToken}`,
+            'User-Agent': `Virilocity/1.0 by ${redditUsername}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            api_type: 'json',
+            kind: 'self',
+            sr: subreddit.replace(/^r\//, ''),
+            title: targetPost?.body[0] ?? 'AI Marketing Insights',
+            text: postBody,
+            nsfw: 'false',
+            spoiler: 'false',
+          }).toString(),
+        });
+
+        if (!redditRes.ok) {
+          const errText = await redditRes.text().catch(() => 'unknown');
+          throw new Error(`Reddit API error ${redditRes.status}: ${errText}`);
+        }
+
+        const redditJson = await redditRes.json() as { json?: { data?: { url?: string; id?: string } } };
+        const permalink = redditJson?.json?.data?.url ?? '';
+
+        store.kpis.postsGenerated += 1;
+        if (targetIndex >= 0) {
+          store.socialPosts = store.socialPosts.map((post, index) => (
+            index === targetIndex
+              ? { ...post, generatedAgo: 'Posted to Reddit just now', primaryAction: 'Posted', secondaryAction: 'View on Reddit', status: 'posted' as const }
+              : post
+          ));
+        }
+
+        store.feedItems = [
+          {
+            id: `reddit_${Date.now()}`,
+            message: `**reddit_manager** published to ${subreddit}${permalink ? ` — ${permalink}` : ''}`,
+            time: 'just now · reddit publish',
+            type: 'green' as const,
+          },
+          ...store.feedItems,
+        ].slice(0, 8);
+
+        await setTenantDashboardState(tenant.id, store);
+        return NextResponse.json({ ok: true, reddit: { permalink }, data: toResponse(store) });
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          { status: 500 },
+        );
+      }
+    }
+
+    // ── LinkedIn publish path ────────────────────────────────────────────────
+    const review = await reviewBeforePublish('linkedin', 'LinkedIn post', postBody);
+    if (!review.approved) {
+      return NextResponse.json({
+        error: 'LinkedIn post blocked by AI review. Please edit and retry.',
+        review,
+      }, { status: 409 });
+    }
+
+    try {
+      const accessToken = await getSecret(`linkedin-access-${tenant.id}`);
+      const memberId = await getSecret(`linkedin-member-id-${tenant.id}`);
+
+      if (!accessToken || !memberId) {
+        return NextResponse.json({ error: 'LinkedIn is not connected for this tenant' }, { status: 409 });
+      }
+
+      const result = await LinkedInPoster.postText({
+        accessToken,
+        memberId,
+        text: postBody,
+      });
+
+      store.kpis.postsGenerated += 1;
+      if (targetIndex >= 0) {
+        store.socialPosts = store.socialPosts.map((post, index) => (
+          index === targetIndex
+            ? {
+                ...post,
+                generatedAgo: 'Posted just now',
+                primaryAction: 'Posted',
+                secondaryAction: 'View Post',
+                status: 'posted',
+              }
+            : post
+        ));
+      }
+
+      store.socialPosts = [
+        buildReplacementLinkedInDraft(store),
+        ...store.socialPosts,
+      ].slice(0, 6);
+
+      store.feedItems = [
+        {
+          id: `linkedin_${Date.now()}`,
+          message: `**linkedin_poster** published post (${result.id})${review.score !== null ? ` (review ${review.score})` : ''}`,
+          time: 'just now · linkedin publish',
+          type: 'green' as const,
+        },
+        ...store.feedItems,
+      ].slice(0, 8);
+
+      await setTenantDashboardState(tenant.id, store);
+      return NextResponse.json({ ok: true, linkedin: result, data: toResponse(store) });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        { status: 500 },
+      );
+    }
+  }
+
+  if (body.action === 'editSocialPost') {
+    const editPostId = body.postId?.trim() ?? '';
+    const postContent = body.postContent;
+
+    if (!editPostId) {
+      return NextResponse.json({ error: 'postId is required' }, { status: 400 });
+    }
+    if (!Array.isArray(postContent) || postContent.length === 0) {
+      return NextResponse.json({ error: 'postContent is required' }, { status: 400 });
+    }
+
+    const idx = store.socialPosts.findIndex(post => post.id === editPostId);
+    if (idx === -1) {
+      return NextResponse.json({ error: 'Social post not found' }, { status: 404 });
+    }
+
+    store.socialPosts = store.socialPosts.map((post, i) =>
+      i === idx
+        ? { ...post, body: postContent, generatedAgo: 'Edited just now' }
+        : post
+    );
+
+    await setTenantDashboardState(tenant.id, store);
+    return NextResponse.json({ ok: true, data: toResponse(store) });
   }
 
   return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });

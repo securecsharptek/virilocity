@@ -32,8 +32,26 @@ const { mockedAuth } = vi.hoisted(() => ({
   mockedAuth: vi.fn(),
 }));
 
+const { mockLinkedInPostText } = vi.hoisted(() => ({
+  mockLinkedInPostText: vi.fn(),
+}));
+
+const { mockRunAgentCall } = vi.hoisted(() => ({
+  mockRunAgentCall: vi.fn(),
+}));
+
 vi.mock('@/auth', () => ({
   auth: mockedAuth,
+}));
+
+vi.mock('../../lib/integrations/linkedin', () => ({
+  LinkedInPoster: {
+    postText: mockLinkedInPostText,
+  },
+}));
+
+vi.mock('../../lib/ai/client', () => ({
+  runAgentCall: mockRunAgentCall,
 }));
 // ── Mock auth middleware (vi.mock is hoisted by Vitest) ───────────────────────
 vi.mock('../../lib/auth/middleware', () => ({
@@ -64,7 +82,8 @@ vi.mock('../../lib/auth/middleware', () => ({
       tenant_suspended:   [403, { error: 'Account suspended' }],
       insufficient_tier:  [403, { error: 'Requires upgrade' }],
     };
-    return map[e?.type] ?? [500, { error: 'Internal error' }];
+    const key = e?.type ?? '';
+    return map[key] ?? [500, { error: 'Internal error' }];
   },
 }));
 
@@ -373,6 +392,10 @@ describe('GET/POST /dashboard/data', () => {
   beforeEach(() => {
     resetTenantDashboardStateMemory();
     mockedAuth.mockReset();
+    mockLinkedInPostText.mockReset();
+    mockRunAgentCall.mockReset();
+    delete process.env['LINKEDIN_ACCESS_TENANT_TEST_001'];
+    delete process.env['LINKEDIN_MEMBER_ID_TENANT_TEST_001'];
   });
 
   it('GET returns 401 when session is missing', async () => {
@@ -441,6 +464,96 @@ describe('GET/POST /dashboard/data', () => {
     expect(docs.some(doc => doc['title'] === 'Integration Test KB Doc')).toBe(true);
   });
 
+  it('POST generateCmsDraft normalizes malformed AI JSON into styled HTML', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+    mockRunAgentCall.mockResolvedValueOnce({
+      output: [
+        'I need a specific topic to write about. Since the topic provided is incomplete ("Generate a"), I\'ll create a general blog post about content generation.',
+        '',
+        '```json',
+        '{',
+        '“title”: “How to Generate a Winning Content Strategy: A Complete Guide for 2024”,',
+        '“slug”: “how-to-generate-a-winning-content-strategy-complete-guide”,',
+        '“body”: “Introduction: Why a Strong Content Strategy Matters',
+        '',
+        'In today\'s hyper-competitive digital landscape, a clear plan helps teams publish consistently.',
+        '',
+        '- Build authority',
+        '- Generate qualified leads”,',
+        '“geoScore”: 91',
+        '}',
+        '```',
+      ].join('\n'),
+      model: 'mock-model',
+    });
+
+    const res = await dashboardDataPost(makeDashboardReq({
+      action: 'generateCmsDraft',
+      prompt: 'Generate a',
+    }));
+
+    expect(res.status).toBe(200);
+
+    const body = await json(res);
+    const draft = body['generatedCmsDraft'] as Record<string, unknown>;
+    const html = String(draft['body'] ?? '');
+
+    expect(draft['title']).toBe('How to Generate a Winning Content Strategy: A Complete Guide for 2024');
+    expect(draft['slug']).toBe('how-to-generate-a-winning-content-strategy-complete-guide');
+    expect(draft['geoScore']).toBe(91);
+    expect(html).toContain('<article');
+    expect(html).toContain('Virilocity AI Article');
+    expect(html).toContain('<h2');
+    expect(html).toContain('<ul');
+    expect(html).not.toContain('{');
+    expect(html).not.toContain('```json');
+    expect(html).not.toContain('"title"');
+  });
+
+  it('POST generateCmsDraft strips nested JSON/title-slug artifacts from body', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+    mockRunAgentCall.mockResolvedValueOnce({
+      output: [
+        '{',
+        '  "title": "AI vs Human: Is the Job Crisis Already Here? What You Need to Know",',
+        '  "slug": "ai-vs-human-job-crisis",',
+        '  "body": "Introduction: The Rise of the Machines in the Workplace',
+        '',
+        '{',
+        '“title”: “AI vs Human: Is the Job Crisis Already Here? What You Need to Know”,',
+        '“slug”: “ai-vs-human-job-crisis”,',
+        '“body”: “',
+        'Artificial Intelligence is no longer a concept confined to science fiction films or research labs.',
+        '”',
+        '}',
+        '",',
+        '  "geoScore": 88',
+        '}',
+      ].join('\n'),
+      model: 'mock-model',
+    });
+
+    const res = await dashboardDataPost(makeDashboardReq({
+      action: 'generateCmsDraft',
+      prompt: 'AI vs Human jobs',
+    }));
+
+    expect(res.status).toBe(200);
+
+    const body = await json(res);
+    const draft = body['generatedCmsDraft'] as Record<string, unknown>;
+    const html = String(draft['body'] ?? '');
+
+    expect(draft['slug']).toBe('ai-vs-human-job-crisis');
+    expect(html).toContain('<article');
+    expect(html).toContain('Virilocity AI Article');
+    expect(html).toContain('Artificial Intelligence is no longer a concept confined to science fiction films or research labs.');
+    expect(html).not.toContain('"slug"');
+    expect(html).not.toContain('“slug”');
+    expect(html).not.toContain('{');
+    expect(html).not.toContain('“title”');
+  });
+
   it('POST pauseAutopilot then resumeAutopilot toggles pause state', async () => {
     mockedAuth.mockResolvedValueOnce(dashboardSession);
     const pauseRes = await dashboardDataPost(makeDashboardReq({ action: 'pauseAutopilot' }));
@@ -459,5 +572,92 @@ describe('GET/POST /dashboard/data', () => {
     const resumeData = resumeBody['data'] as Record<string, unknown>;
     const resumeAutopilot = resumeData['autopilot'] as Record<string, unknown>;
     expect(resumeAutopilot['paused']).toBe(false);
+  });
+
+  it('POST publishSocialPost validates required post body', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+
+    const req = makeDashboardReq({
+      action: 'publishSocialPost',
+      postChannel: 'linkedin',
+      postBody: '',
+    });
+
+    const res = await dashboardDataPost(req);
+    expect(res.status).toBe(400);
+  });
+
+  it('POST publishSocialPost blocks publish when AI review flags the content', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+    mockRunAgentCall.mockResolvedValueOnce({
+      output: JSON.stringify({
+        approved: false,
+        brandConsistencyScore: 41,
+        flags: ['tone violation'],
+      }),
+      model: 'mock-model',
+    });
+
+    const req = makeDashboardReq({
+      action: 'publishSocialPost',
+      postChannel: 'linkedin',
+      postBody: 'Spammy content that should be blocked.',
+    });
+
+    const res = await dashboardDataPost(req);
+    expect(res.status).toBe(409);
+
+    const body = await json(res);
+    expect(String(body['error'])).toContain('blocked by AI review');
+    expect(mockLinkedInPostText).not.toHaveBeenCalled();
+  });
+
+  it('POST publishSocialPost returns 409 when LinkedIn is not connected', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+
+    const req = makeDashboardReq({
+      action: 'publishSocialPost',
+      postChannel: 'linkedin',
+      postBody: 'Test post body for LinkedIn.',
+    });
+
+    const res = await dashboardDataPost(req);
+    expect(res.status).toBe(409);
+
+    const body = await json(res);
+    expect(String(body['error'])).toContain('LinkedIn is not connected');
+  });
+
+  it('POST publishSocialPost marks the post as posted and creates a replacement draft', async () => {
+    mockedAuth.mockResolvedValueOnce(dashboardSession);
+    process.env['LINKEDIN_ACCESS_TENANT_TEST_001'] = 'linkedin-access-token';
+    process.env['LINKEDIN_MEMBER_ID_TENANT_TEST_001'] = 'linkedin-member-id';
+    mockLinkedInPostText.mockResolvedValueOnce({ id: 'li_post_123', status: 201 });
+
+    const req = makeDashboardReq({
+      action: 'publishSocialPost',
+      postId: '1',
+      postChannel: 'linkedin',
+      postBody: 'Test post body for LinkedIn.',
+    });
+
+    const res = await dashboardDataPost(req);
+    expect(res.status).toBe(200);
+
+    const body = await json(res);
+    const data = body['data'] as Record<string, unknown>;
+    const socialPosts = data['socialPosts'] as Array<Record<string, unknown>>;
+
+    expect(mockLinkedInPostText).toHaveBeenCalledWith({
+      accessToken: 'linkedin-access-token',
+      memberId: 'linkedin-member-id',
+      text: 'Test post body for LinkedIn.',
+    });
+    expect(socialPosts[0]?.['id']).not.toBe('1');
+    expect(socialPosts[0]?.['status']).toBe('draft');
+
+    const publishedPost = socialPosts.find(post => post['id'] === '1');
+    expect(publishedPost?.['status']).toBe('posted');
+    expect(publishedPost?.['primaryAction']).toBe('Posted');
   });
 });

@@ -6,7 +6,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { MODELS, HAIKU_AGENTS } from '../types/index';
 import { applyFairnessFilter, type FairnessResult } from './fairness';
-import { withRetry, trunc } from '../utils/index';
+import { withRetry } from '../utils/index';
 import type { AgentType, Tier } from '../types/index';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
@@ -32,13 +32,32 @@ export interface ClaudeCallOptions {
   maxTokens?: number;
 }
 
+export const MCP_BETA_FLAG = 'mcp-client-2025-04-04' as const;
+
 export const callClaude = async (opts: ClaudeCallOptions): Promise<string> => {
-  const response = await anthropic.messages.create({
+  const mcpServers = getConfiguredMcpServers();
+  type ClaudeMessageCreateRequest = Parameters<typeof anthropic.messages.create>[0] & {
+    betas?: string[];
+    mcp_servers?: Array<{ name: string; url: string }>;
+  };
+
+  const request: ClaudeMessageCreateRequest = {
     model:      opts.model,
     system:     opts.system,
     messages:   opts.messages,
-    max_tokens: opts.maxTokens ?? 800,
-  });
+    max_tokens: opts.maxTokens ?? 2048,
+  };
+
+  if (mcpServers.length > 0) {
+    request.betas = [MCP_BETA_FLAG];
+    request.mcp_servers = mcpServers;
+  }
+
+  const response = await (anthropic.messages.create as unknown as (params: ClaudeMessageCreateRequest) => Promise<Awaited<ReturnType<typeof anthropic.messages.create>>>)(request);
+  if (!('content' in response) || !Array.isArray(response.content)) {
+    return '';
+  }
+
   return response.content
     .filter(b => b.type === 'text')
     .map(b => (b as { type: 'text'; text: string }).text)
@@ -75,7 +94,7 @@ export const runAgentCall = async (
     output   = fairness.sanitized;
   }
 
-  return { output: trunc(output, 2000), model, durationMs: Date.now() - start, fairness };
+  return { output, model, durationMs: Date.now() - start, fairness };
 };
 
 // ── MCP server registry (Claude API tool use) ─────────────────────────────────
@@ -84,3 +103,24 @@ export const MCP_SERVERS = {
   m365:      { name: 'm365-mcp',      url: process.env['M365_MCP_URL']      ?? '' },
   neon:      { name: 'neon-mcp',      url: process.env['NEON_MCP_URL']      ?? '' },
 } as const;
+
+export const getConfiguredMcpServers = (): Array<{ name: string; url: string }> => {
+  return Object.values(MCP_SERVERS)
+    .map(server => ({ name: server.name, url: server.url.trim() }))
+    .filter(server => server.url.length > 0);
+};
+
+export const validateMcpServerConfig = () => {
+  const env = {
+    HUBSPOT_MCP_URL: (process.env['HUBSPOT_MCP_URL'] ?? '').trim(),
+    M365_MCP_URL: (process.env['M365_MCP_URL'] ?? '').trim(),
+    NEON_MCP_URL: (process.env['NEON_MCP_URL'] ?? '').trim(),
+  };
+
+  return {
+    enabled: Object.values(env).some(Boolean),
+    enabledCount: Object.values(env).filter(Boolean).length,
+    missing: Object.entries(env).filter(([, value]) => !value).map(([key]) => key),
+    configured: Object.entries(env).filter(([, value]) => Boolean(value)).map(([key, value]) => ({ key, url: value })),
+  };
+};

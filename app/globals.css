@@ -327,10 +327,14 @@ body::after {
 }
 
 .dashboard-theme--light {
+  --light-accent-rgb: 178, 95, 154;
+  --light-accent-strong-rgb: 129, 62, 114;
+  --light-accent-soft-rgb: 234, 198, 225;
+  --light-accent-border-rgb: 157, 103, 149;
   background:
-    radial-gradient(circle at 18% 12%, rgba(255, 203, 222, 0.38), transparent 44%),
-    radial-gradient(circle at 84% 86%, rgba(243, 214, 255, 0.34), transparent 46%),
-    linear-gradient(180deg, #fdf4f8 0%, #f8eef7 45%, #f6ecf5 100%);
+    radial-gradient(circle at 18% 12%, rgba(255, 214, 228, 0.42), transparent 44%),
+    radial-gradient(circle at 84% 86%, rgba(228, 217, 255, 0.32), transparent 46%),
+    linear-gradient(180deg, #fff8fb 0%, #f8f1fa 45%, #f4edf8 100%);
 }
 
 .dashboard-theme--light .glass-shell {
@@ -415,10 +419,95 @@ body::after {
   text-shadow: none !important;
 }
 
+/* Global light-mode readability guardrail for utility text colors used outside glass-shell */
+.dashboard-theme--light [class*='text-[rgba(255,255,255'] {
+  color: rgba(84, 58, 95, 0.9) !important;
+  text-shadow: none !important;
+}
+
+.dashboard-theme--light [class*='text-white'] {
+  color: rgba(84, 58, 95, 0.92) !important;
+  text-shadow: none !important;
+}
+
+.dashboard-theme--light [class*='placeholder:text-[rgba(180,205,220'] {
+  color: rgba(155, 126, 166, 0.78) !important;
+}
+
+.dashboard-theme--light .a2a-campaign-input::placeholder {
+  color: rgba(186, 158, 194, 0.82) !important;
+}
+
+.dashboard-theme--light [class*='bg-[rgba(0,8,20'],
+.dashboard-theme--light [class*='bg-[rgba(0,4,12'] {
+  background-color: rgba(255, 255, 255, 0.56) !important;
+}
+
+.dashboard-theme--light [class*='border-[rgba(255,255,255,0.06)'],
+.dashboard-theme--light [class*='border-[rgba(255,255,255,0.07)'],
+.dashboard-theme--light [class*='border-[rgba(255,255,255,0.08)'],
+.dashboard-theme--light [class*='border-[rgba(255,255,255,0.09)'],
+.dashboard-theme--light [class*='border-[rgba(255,255,255,0.1)'],
+.dashboard-theme--light [class*='border-[rgba(255,255,255,0.12)'],
+.dashboard-theme--light [class*='border-[rgba(255,255,255,0.14)'],
+.dashboard-theme--light [class*='border-[rgba(255,255,255,0.15)'] {
+  border-color: rgba(165, 127, 171, 0.24) !important;
+}
+
 .dashboard-theme--light .glass-shell [class*='text-[rgba(14,200,198'],
 .dashboard-theme--light .glass-shell [class*='text-[rgba(30,165,80'],
 .dashboard-theme--light .glass-shell [class*='text-[rgba(201,168,76'] {
   color: rgba(164, 66, 133, 0.94) !important;
+}
+
+.dashboard-theme--light [class*='text-[rgba(14,200,198'],
+.dashboard-theme--light [class*='text-[rgba(14,124,123'],
+.dashboard-theme--light [class*='text-[rgba(30,165,80'],
+.dashboard-theme--light [class*='text-[rgba(120,255,170'],
+.dashboard-theme--light [class*='text-[#1EA550'] {
+  color: rgba(var(--light-accent-strong-rgb), 0.96) !important;
+  text-shadow: 0 0 14px rgba(var(--light-accent-rgb), 0.18) !important;
+}
+
+.dashboard-theme--light [class*='bg-[rgba(14,124,123'],
+.dashboard-theme--light [class*='bg-[rgba(14,200,198'],
+.dashboard-theme--light [class*='bg-[rgba(30,165,80'],
+.dashboard-theme--light [class*='bg-[rgba(30,120,60'],
+.dashboard-theme--light [class*='bg-[#1EA550'] {
+  background-color: rgba(var(--light-accent-rgb), 0.15) !important;
+}
+
+.dashboard-theme--light [class*='border-[rgba(14,124,123'],
+.dashboard-theme--light [class*='border-[rgba(14,200,198'],
+.dashboard-theme--light [class*='border-[rgba(30,165,80'],
+.dashboard-theme--light [class*='border-[rgba(30,120,60'],
+.dashboard-theme--light [class*='border-[#1EA550'] {
+  border-color: rgba(var(--light-accent-border-rgb), 0.38) !important;
+}
+
+.dashboard-theme--light [class*='shadow-[0_0_'][class*='14,124,123'],
+.dashboard-theme--light [class*='shadow-[0_0_'][class*='14,200,198'],
+.dashboard-theme--light [class*='shadow-[0_0_'][class*='30,165,80'] {
+  box-shadow: 0 8px 20px rgba(129, 62, 114, 0.18) !important;
+}
+
+.dashboard-theme--light [class*='from-[rgba(14,124,123'],
+.dashboard-theme--light [class*='from-[rgba(14,200,198'],
+.dashboard-theme--light [class*='from-[rgba(30,165,80'] {
+  background-image: linear-gradient(135deg, rgba(var(--light-accent-rgb), 0.68), rgba(var(--light-accent-strong-rgb), 0.78)) !important;
+}
+
+.dashboard-theme--light [class*='to-[rgba(0,60,60'],
+.dashboard-theme--light [class*='to-[rgba(0,55,55'],
+.dashboard-theme--light [class*='to-[rgba(0,38,38'] {
+  background-image: linear-gradient(135deg, rgba(var(--light-accent-rgb), 0.62), rgba(var(--light-accent-strong-rgb), 0.78)) !important;
+}
+
+.dashboard-theme--light .pulse-dot,
+.dashboard-theme--light .pulse-dot.teal,
+.dashboard-theme--light .pulse-dot.green {
+  background: rgba(var(--light-accent-rgb), 0.92) !important;
+  box-shadow: 0 0 8px rgba(var(--light-accent-rgb), 0.36) !important;
 }
 
 .dashboard-theme--light .glass-shell [class*='border-[rgba(255,255,255'] {

@@ -127,3 +127,80 @@ export interface A11yMeta {
 
 // ── Webhook replay protection — TEVV Fix F-02 ─────────────────────────────────
 export const WEBHOOK_REPLAY_WINDOW_SECONDS = 300 as const; // ±5 minutes
+
+// ── Agent activation plan — Theme D (AGT-01, AGT-03) ─────────────────────────
+export type AgentActivationMode = 'autopilot' | 'on_demand';
+
+export interface AgentActivation {
+  mode:            AgentActivationMode;
+  minTier:         Tier;    // minimum tier required to run
+  hasFairnessGate: boolean; // output passes through ContentFairnessFilter
+  hitlGated:       boolean; // requires human approval (never auto-dispatches)
+}
+
+// Tier ordering for gate enforcement
+export const TIER_ORDER: Record<Tier, number> = {
+  free: 0, starter: 1, pro: 2, growth: 3, scale: 4, enterprise: 5,
+} as const;
+
+const LOCAL_TIER_BYPASS_VALUES = new Set(['1', 'true', 'yes', 'on']);
+const LOCAL_TIER_BYPASS_DISABLED_VALUES = new Set(['0', 'false', 'no', 'off']);
+
+// Local development helper: temporarily bypass tier gates while building features.
+export const isLocalTierBypassEnabled = (): boolean => {
+  if (process.env['NODE_ENV'] === 'production') return false;
+  const raw = process.env['VIRILOCITY_LOCAL_TIER_BYPASS']?.trim().toLowerCase();
+  if (!raw) return true;
+  if (LOCAL_TIER_BYPASS_DISABLED_VALUES.has(raw)) return false;
+  return LOCAL_TIER_BYPASS_VALUES.has(raw);
+};
+
+export const isTierEligible = (tenantTier: Tier, requiredTier: Tier): boolean =>
+  isLocalTierBypassEnabled() || TIER_ORDER[tenantTier] >= TIER_ORDER[requiredTier];
+
+export const getTierAgentLimit = (tenantTier: Tier): number =>
+  isLocalTierBypassEnabled() ? -1 : TIER_LIMITS[tenantTier].agentsEnabled;
+
+export const AGENT_ACTIVATION_PLAN: Readonly<Record<AgentType, AgentActivation>> = {
+  // ── 11 autopilot agents ──────────────────────────────────────────────────
+  keyword_researcher:          { mode: 'autopilot',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
+  trend_detector:              { mode: 'autopilot',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
+  hs_contact_enricher:         { mode: 'autopilot',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
+  bid_optimizer:               { mode: 'autopilot',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  backlink_outreach:           { mode: 'autopilot',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  social_listener:             { mode: 'autopilot',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
+  ai_visibility_tracker:       { mode: 'autopilot',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  churn_predictor:             { mode: 'autopilot',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+  ab_test_orchestrator:        { mode: 'autopilot',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  workspace_reporter:          { mode: 'autopilot',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
+  cross_channel_orchestrator:  { mode: 'autopilot',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+  // ── 28 on-demand agents ──────────────────────────────────────────────────
+  geo_content_generator:       { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: true,  hitlGated: false },
+  cvr_optimizer:               { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  lead_scorer:                 { mode: 'on_demand',  minTier: 'starter',    hasFairnessGate: false, hitlGated: false },
+  revenue_forecaster:          { mode: 'on_demand',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+  viral_analyzer:              { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  reddit_manager:              { mode: 'on_demand',  minTier: 'free',       hasFairnessGate: false, hitlGated: true  },
+  knowledge_base_curator:      { mode: 'on_demand',  minTier: 'starter',    hasFairnessGate: false, hitlGated: false },
+  email_sequencer:             { mode: 'on_demand',  minTier: 'starter',    hasFairnessGate: true,  hitlGated: false },
+  ad_creative_generator:       { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: true,  hitlGated: false },
+  seo_auditor:                 { mode: 'on_demand',  minTier: 'free',       hasFairnessGate: false, hitlGated: false },
+  competitor_tracker:          { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  content_repurposer:          { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: true,  hitlGated: false },
+  influencer_matcher:          { mode: 'on_demand',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+  pr_monitor:                  { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  brand_voice_enforcer:        { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: true,  hitlGated: false },
+  customer_journey_mapper:     { mode: 'on_demand',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+  attribution_analyzer:        { mode: 'on_demand',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+  budget_allocator:            { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  landing_page_optimizer:      { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: true,  hitlGated: false },
+  webinar_orchestrator:        { mode: 'on_demand',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+  community_manager:           { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  referral_program_manager:    { mode: 'on_demand',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+  upsell_engine:               { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  renewal_manager:             { mode: 'on_demand',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+  feedback_analyzer:           { mode: 'on_demand',  minTier: 'starter',    hasFairnessGate: false, hitlGated: false },
+  competitive_intel:           { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  market_researcher:           { mode: 'on_demand',  minTier: 'pro',        hasFairnessGate: false, hitlGated: false },
+  campaign_orchestrator:       { mode: 'on_demand',  minTier: 'growth',     hasFairnessGate: false, hitlGated: false },
+} as const;
